@@ -1,16 +1,26 @@
+const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-
+const path = require('path');
+ 
 const PORT = process.env.PORT || 3000;
-
+ 
+const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+ 
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+ 
 // ── GAME STATE ──────────────────────────────────────────
-const rooms = {}; // roomCode -> { players: [ws, ws], state: {...} }
-
+const rooms = {};
+ 
 function makeCode() {
   return Math.random().toString(36).slice(2, 6).toUpperCase();
 }
-
-// ── DECK ────────────────────────────────────────────────
+ 
 const CT = { Zone:'Zone', PowerSpike:'PowerSpike', Tip:'Tip', Block:'Block', Libero:'Libero', Ace:'Ace' };
 let _uid = 0;
 function mkCard(type, zone=0) { return { type, zone, id: ++_uid }; }
@@ -31,19 +41,18 @@ function shuffle(arr) {
   }
   return arr;
 }
-
-// ── GAME LOGIC ──────────────────────────────────────────
+ 
 const AT = { Zone:'Zone', PowerSpike:'PowerSpike', Tip:'Tip', Ace:'Ace' };
 const TS = { Serve:'Serve', Attack:'Attack', Defense:'Defense', Cover:'Cover' };
 const CORR = [[1,7,2],[6,8,3],[5,9,4]];
 const CORR_SETS = CORR.map(r => new Set(r));
-
+ 
 function sameCorridor(a,b){ return CORR_SETS.some(s=>s.has(a)&&s.has(b)); }
 function isAdjacent(a,b){
   for(const r of CORR){ const ia=r.indexOf(a),ib=r.indexOf(b); if(ia!==-1&&ib!==-1&&Math.abs(ia-ib)===1)return true; }
   return false;
 }
-
+ 
 function initGameState(firstServerIsP1) {
   const p1Deck = makeDeck();
   const p2Deck = makeDeck();
@@ -58,18 +67,18 @@ function initGameState(firstServerIsP1) {
     atkType: null, atkZone: 0,
     isServePhase: true,
     selected: [],
-    attPlayer: firstServerIsP1 ? 1 : 2, // 1 or 2
+    attPlayer: firstServerIsP1 ? 1 : 2,
     defPlayer: firstServerIsP1 ? 2 : 1,
     log: [],
     matchOver: false,
   };
 }
-
+ 
 function dealHands(state) {
   state.p1Hand = makeDeck().slice(0,6);
   state.p2Hand = makeDeck().slice(0,6);
 }
-
+ 
 function getHand(state, player) {
   return player === 1 ? state.p1Hand : state.p2Hand;
 }
@@ -78,14 +87,12 @@ function removeCard(hand, cardId) {
   if(i!==-1) hand.splice(i,1);
 }
 function removeCards(hand, cardIds) { cardIds.forEach(id=>removeCard(hand,id)); }
-
+ 
 function addLog(state, icon, player, text) {
   state.log.push({ icon, player, text });
   if(state.log.length > 30) state.log.shift();
 }
-
-// ── BUILD CLIENT SYNC PAYLOAD ────────────────────────────
-// Each player gets their own hand, opponent's hand as card backs (count only)
+ 
 function buildPayload(state, playerNum) {
   const myHand = playerNum === 1 ? state.p1Hand : state.p2Hand;
   const oppHandCount = playerNum === 1 ? state.p2Hand.length : state.p1Hand.length;
@@ -111,7 +118,7 @@ function buildPayload(state, playerNum) {
     p1Serving: state.p1Serving,
   };
 }
-
+ 
 function broadcast(room, state) {
   const [p1ws, p2ws] = room.players;
   if(p1ws && p1ws.readyState === WebSocket.OPEN)
@@ -119,23 +126,21 @@ function broadcast(room, state) {
   if(p2ws && p2ws.readyState === WebSocket.OPEN)
     p2ws.send(JSON.stringify(buildPayload(state, 2)));
 }
-
-// ── PROCESS PLAY ─────────────────────────────────────────
+ 
 function processPlay(room, playerNum, cardIds) {
   const state = room.state;
   if(state.matchOver) return;
-
+ 
   const myHand = getHand(state, playerNum);
   const cards = cardIds.map(id => myHand.find(c=>c.id===id)).filter(Boolean);
   if(cards.length === 0) return;
-
+ 
   const ts = state.turnState;
   const at = state.atkType;
-
-  // Validate it's this player's turn
+ 
   if(ts !== TS.Defense && state.attPlayer !== playerNum) return;
   if(ts === TS.Defense && state.defPlayer !== playerNum) return;
-
+ 
   if(ts === TS.Serve) {
     const c = cards[0];
     if(c.type !== CT.Zone && c.type !== CT.Ace) return;
@@ -152,12 +157,12 @@ function processPlay(room, playerNum, cardIds) {
     broadcast(room, state);
     return;
   }
-
+ 
   if(ts === TS.Attack) {
     const tip = cards.find(c=>c.type===CT.Tip);
     const zone = cards.find(c=>c.type===CT.Zone);
     const spike = cards.find(c=>c.type===CT.PowerSpike);
-
+ 
     if(spike && cards.length===1){
       removeCard(myHand, spike.id);
       state.atkType = AT.PowerSpike;
@@ -181,13 +186,13 @@ function processPlay(room, playerNum, cardIds) {
     }
     return;
   }
-
+ 
   if(ts === TS.Defense) {
     const defHand = getHand(state, playerNum);
     const bc = cards.filter(c=>c.type===CT.Block).length;
     const zc = cards.filter(c=>c.type===CT.Zone).length;
     const lib = cards.some(c=>c.type===CT.Libero);
-
+ 
     if(at === AT.PowerSpike){
       if(lib && cards.length===1){ doSwap(state, defHand, cards, playerNum, 'Libero defense'); return broadcast(room,state); }
       if(bc===1&&zc===1){ removeCards(defHand,cards.map(c=>c.id)); addLog(state,'🛡️','p'+playerNum,'Block+Zone — ball returns'); state.turnState=TS.Attack; broadcast(room,state); return; }
@@ -216,13 +221,12 @@ function processPlay(room, playerNum, cardIds) {
     }
     if(at === AT.Ace){
       if(lib && cards.length===1){ doSwap(state, defHand, cards, playerNum, 'received Ace'); return broadcast(room,state); }
-      // No libero — attacker scores
       addLog(state,'🚀','p'+(state.attPlayer),'Ace — point!');
       awardPoint(room, state.attPlayer); return;
     }
     return;
   }
-
+ 
   if(ts === TS.Cover){
     const c = cards[0];
     let ok = false;
@@ -235,25 +239,24 @@ function processPlay(room, playerNum, cardIds) {
     broadcast(room, state); return;
   }
 }
-
+ 
 function doSwap(state, defHand, cards, playerNum, desc) {
   removeCards(defHand, cards.map(c=>c.id));
   addLog(state,'✅','p'+playerNum,'Player '+playerNum+' — '+desc);
   state.isServePhase = false;
-  // Swap roles
   [state.attPlayer, state.defPlayer] = [state.defPlayer, state.attPlayer];
   state.turnState = TS.Attack;
 }
-
+ 
 function awardPoint(room, scorerPlayerNum) {
   const state = room.state;
   if(scorerPlayerNum === 1){ state.p1Score++; state.p1Serving=true; }
   else { state.p2Score++; state.p1Serving=false; }
   addLog(state,'🎉','point','Player '+scorerPlayerNum+' wins the point!');
-
+ 
   const POINTS_WIN=2, MAX_PTS=25, SETS_WIN=2;
   function winsSet(ps,os){ return ps>=POINTS_WIN&&(ps>=MAX_PTS||ps-os>=2); }
-
+ 
   if(winsSet(state.p1Score,state.p2Score)){
     state.p1Sets++;
     addLog(state,'🏆','point','Player 1 wins the set!');
@@ -278,10 +281,10 @@ function awardPoint(room, scorerPlayerNum) {
     state.p1Serving=state.firstSetP1;
     dealHands(state); startRally(state); broadcast(room,state); return;
   }
-
+ 
   dealHands(state); startRally(state); broadcast(room,state);
 }
-
+ 
 function startRally(state) {
   state.attPlayer = state.p1Serving ? 1 : 2;
   state.defPlayer = state.p1Serving ? 2 : 1;
@@ -290,49 +293,43 @@ function startRally(state) {
   state.turnState = TS.Serve;
   state.selected = [];
 }
-
-// ── TIMEOUT HANDLER ──────────────────────────────────────
+ 
 function handleTimeout(room, playerNum) {
   const state = room.state;
   if(state.matchOver) return;
   const activePlayer = state.turnState===TS.Defense ? state.defPlayer : state.attPlayer;
-  if(activePlayer !== playerNum) return; // stale timeout
+  if(activePlayer !== playerNum) return;
   const winner = playerNum === state.attPlayer ? state.defPlayer : state.attPlayer;
-  addLog(state,'⏰','point','Player '+playerNum+' timed out — point to Player '+winner);
+  addLog(state,'⏰','point','Player '+playerNum+' timed out');
   awardPoint(room, winner);
 }
-
-// ── HTTP + WS SERVER ─────────────────────────────────────
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type':'text/plain'});
-  res.end('VolleyCards server running');
-});
-
-const wss = new WebSocket.Server({ server });
-
+ 
+function scheduleTimeout(room) {
+  if(!room.state||room.state.matchOver) return;
+  const activePlayer = room.state.turnState===TS.Defense ? room.state.defPlayer : room.state.attPlayer;
+  Object.values(room.timers).forEach(t=>clearTimeout(t));
+  room.timers = {};
+  room.timers[activePlayer] = setTimeout(()=>{
+    handleTimeout(room, activePlayer);
+  }, 13000);
+}
+ 
 wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch(e){ return; }
-
-    // CREATE ROOM
+ 
     if(msg.type === 'CREATE') {
       let code;
       do { code = makeCode(); } while(rooms[code]);
       const firstP1 = Math.random() > 0.5;
-      rooms[code] = {
-        players: [ws, null],
-        state: null,
-        timers: {},
-        firstP1,
-      };
+      rooms[code] = { players: [ws, null], state: null, timers: {}, firstP1 };
       ws.roomCode = code;
       ws.playerNum = 1;
       ws.send(JSON.stringify({ type:'CREATED', code }));
       return;
     }
-
-    // JOIN ROOM
+ 
     if(msg.type === 'JOIN') {
       const code = (msg.code||'').toUpperCase().trim();
       const room = rooms[code];
@@ -341,37 +338,32 @@ wss.on('connection', (ws) => {
       room.players[1] = ws;
       ws.roomCode = code;
       ws.playerNum = 2;
-      // Both players connected — start game
       room.state = initGameState(room.firstP1);
       room.players[0].send(JSON.stringify({type:'JOINED', opponentReady:true}));
       broadcast(room, room.state);
+      scheduleTimeout(room);
       return;
     }
-
-    // PLAY CARDS
+ 
     if(msg.type === 'PLAY') {
       const room = rooms[ws.roomCode];
       if(!room||!room.state) return;
-      // Clear any pending timeout for this player
       if(room.timers[ws.playerNum]){
         clearTimeout(room.timers[ws.playerNum]);
         delete room.timers[ws.playerNum];
       }
       processPlay(room, ws.playerNum, msg.cardIds);
-      // Start timeout for next active player
       scheduleTimeout(room);
       return;
     }
-
-    // TIMEOUT ACK (client tells server timer ran out)
+ 
     if(msg.type === 'TIMEOUT') {
       const room = rooms[ws.roomCode];
       if(!room||!room.state) return;
       handleTimeout(room, ws.playerNum);
       return;
     }
-
-    // REMATCH
+ 
     if(msg.type === 'REMATCH') {
       const room = rooms[ws.roomCode];
       if(!room) return;
@@ -381,27 +373,16 @@ wss.on('connection', (ws) => {
       return;
     }
   });
-
+ 
   ws.on('close', () => {
     const room = rooms[ws.roomCode];
     if(!room) return;
-    // Notify other player
+    Object.values(room.timers).forEach(t=>clearTimeout(t));
     const other = room.players.find(p=>p&&p!==ws);
     if(other&&other.readyState===WebSocket.OPEN)
       other.send(JSON.stringify({type:'OPPONENT_LEFT'}));
     delete rooms[ws.roomCode];
   });
 });
-
-function scheduleTimeout(room) {
-  if(!room.state||room.state.matchOver) return;
-  const activePlayer = room.state.turnState===TS.Defense ? room.state.defPlayer : room.state.attPlayer;
-  // Clear old timers
-  Object.values(room.timers).forEach(t=>clearTimeout(t));
-  room.timers = {};
-  room.timers[activePlayer] = setTimeout(()=>{
-    handleTimeout(room, activePlayer);
-  }, 11000); // 10s + 1s buffer
-}
-
+ 
 server.listen(PORT, () => console.log(`VolleyCards server running on port ${PORT}`));
