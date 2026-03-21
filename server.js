@@ -96,7 +96,8 @@ function addLog(state, icon, player, text) {
 function buildPayload(state, playerNum) {
   const myHand = playerNum === 1 ? state.p1Hand : state.p2Hand;
   const oppHandCount = playerNum === 1 ? state.p2Hand.length : state.p1Hand.length;
-  const isMyTurn = (
+  const paused = state.paused || false;
+  const isMyTurn = !paused && (
     (state.turnState !== TS.Defense && state.attPlayer === playerNum) ||
     (state.turnState === TS.Defense && state.defPlayer === playerNum)
   );
@@ -116,6 +117,10 @@ function buildPayload(state, playerNum) {
     matchOver: state.matchOver,
     winner: state.winner || null,
     p1Serving: state.p1Serving,
+    paused,
+    lastAction: state.lastAction || null,   // 'serve','attack','defend','block','point'
+    ballSide: state.ballSide || null,       // 1 or 2 (which player's side ball is on)
+    pointScorer: state.pointScorer || null,
   };
 }
  
@@ -154,7 +159,10 @@ function processPlay(room, playerNum, cardIds) {
     }
     state.turnState = TS.Defense;
     state.isServePhase = true;
+    state.lastAction = 'serve';
+    state.ballSide = state.defPlayer;
     broadcast(room, state);
+    checkNoPlayable(room);
     return;
   }
  
@@ -168,21 +176,24 @@ function processPlay(room, playerNum, cardIds) {
       state.atkType = AT.PowerSpike;
       addLog(state,'💥','p'+playerNum,'Player '+playerNum+' Power Spike!');
       state.turnState = TS.Defense; state.isServePhase = false;
-      broadcast(room, state); return;
+      state.lastAction = 'attack'; state.ballSide = state.defPlayer;
+      broadcast(room, state); checkNoPlayable(room); return;
     }
     if(zone && !tip && cards.length===1){
       removeCard(myHand, zone.id);
       state.atkType = AT.Zone; state.atkZone = zone.zone;
       addLog(state,'🏐','p'+playerNum,'Player '+playerNum+' attacked Zone '+zone.zone);
       state.turnState = TS.Defense; state.isServePhase = false;
-      broadcast(room, state); return;
+      state.lastAction = 'attack'; state.ballSide = state.defPlayer;
+      broadcast(room, state); checkNoPlayable(room); return;
     }
     if(tip && zone && cards.length===2){
       removeCards(myHand, [tip.id, zone.id]);
       state.atkType = AT.Tip; state.atkZone = zone.zone;
       addLog(state,'🤫','p'+playerNum,'Player '+playerNum+' Tip → Zone '+zone.zone);
       state.turnState = TS.Defense; state.isServePhase = false;
-      broadcast(room, state); return;
+      state.lastAction = 'attack'; state.ballSide = state.defPlayer;
+      broadcast(room, state); checkNoPlayable(room); return;
     }
     return;
   }
@@ -246,13 +257,22 @@ function doSwap(state, defHand, cards, playerNum, desc) {
   state.isServePhase = false;
   [state.attPlayer, state.defPlayer] = [state.defPlayer, state.attPlayer];
   state.turnState = TS.Attack;
+  state.lastAction = 'defend';
+  state.ballSide = state.attPlayer;  // after swap, new attacker has ball
+  state.atkZone = 0; // clear zone highlight after defend
 }
  
 function awardPoint(room, scorerPlayerNum) {
   const state = room.state;
+  Object.values(room.timers).forEach(t=>clearTimeout(t));
+  room.timers = {};
+ 
   if(scorerPlayerNum === 1){ state.p1Score++; state.p1Serving=true; }
   else { state.p2Score++; state.p1Serving=false; }
   addLog(state,'🎉','point','Player '+scorerPlayerNum+' wins the point!');
+  state.lastAction = 'point';
+  state.pointScorer = scorerPlayerNum;
+  state.paused = true;
  
   const POINTS_WIN=2, MAX_PTS=25, SETS_WIN=2;
   function winsSet(ps,os){ return ps>=POINTS_WIN&&(ps>=MAX_PTS||ps-os>=2); }
@@ -261,28 +281,43 @@ function awardPoint(room, scorerPlayerNum) {
     state.p1Sets++;
     addLog(state,'🏆','point','Player 1 wins the set!');
     if(state.p1Sets>=SETS_WIN){
-      state.matchOver=true; state.winner=1;
+      state.matchOver=true; state.winner=1; state.paused=false;
       addLog(state,'🏆','point','Player 1 wins the match!');
       broadcast(room, state); return;
     }
-    state.setNum++; state.p1Score=0; state.p2Score=0;
-    state.p1Serving=!state.firstSetP1;
-    dealHands(state); startRally(state); broadcast(room,state); return;
+    broadcast(room, state);
+    setTimeout(()=>{
+      state.setNum++; state.p1Score=0; state.p2Score=0;
+      state.p1Serving=!state.firstSetP1; state.paused=false;
+      state.lastAction=null; state.pointScorer=null;
+      dealHands(state); startRally(state); broadcast(room,state);
+      scheduleTimeout(room); checkNoPlayable(room);
+    }, 3500); return;
   }
   if(winsSet(state.p2Score,state.p1Score)){
     state.p2Sets++;
     addLog(state,'🏆','point','Player 2 wins the set!');
     if(state.p2Sets>=SETS_WIN){
-      state.matchOver=true; state.winner=2;
+      state.matchOver=true; state.winner=2; state.paused=false;
       addLog(state,'🏆','point','Player 2 wins the match!');
       broadcast(room, state); return;
     }
-    state.setNum++; state.p1Score=0; state.p2Score=0;
-    state.p1Serving=state.firstSetP1;
-    dealHands(state); startRally(state); broadcast(room,state); return;
+    broadcast(room, state);
+    setTimeout(()=>{
+      state.setNum++; state.p1Score=0; state.p2Score=0;
+      state.p1Serving=state.firstSetP1; state.paused=false;
+      state.lastAction=null; state.pointScorer=null;
+      dealHands(state); startRally(state); broadcast(room,state);
+      scheduleTimeout(room); checkNoPlayable(room);
+    }, 3500); return;
   }
  
-  dealHands(state); startRally(state); broadcast(room,state);
+  broadcast(room, state);
+  setTimeout(()=>{
+    state.paused=false; state.lastAction=null; state.pointScorer=null;
+    dealHands(state); startRally(state); broadcast(room,state);
+    scheduleTimeout(room); checkNoPlayable(room);
+  }, 3000);
 }
  
 function startRally(state) {
@@ -292,6 +327,35 @@ function startRally(state) {
   state.atkType = null; state.atkZone = 0;
   state.turnState = TS.Serve;
   state.selected = [];
+  state.lastAction = 'serve';
+  state.ballSide = state.attPlayer;
+}
+ 
+function checkNoPlayable(room) {
+  const state = room.state;
+  if (!state || state.matchOver || state.paused) return;
+  const activePlayer = state.turnState===TS.Defense ? state.defPlayer : state.attPlayer;
+  const hand = activePlayer===1 ? state.p1Hand : state.p2Hand;
+  // Check if active player has ANY playable card
+  const hasPlay = hand.some(card => {
+    const ts=state.turnState, at=state.atkType, az=state.atkZone, sp=state.isServePhase;
+    if(ts===TS.Serve) return card.type==='Zone'||card.type==='Ace';
+    if(ts===TS.Attack){ if(card.type==='PowerSpike'||card.type==='Zone')return true; if(card.type==='Tip')return hand.some(c=>c.type==='Zone'); return false; }
+    if(ts===TS.Defense){
+      if(['Ace','PowerSpike','Tip'].includes(card.type))return false;
+      if(sp){if(at==='Zone')return(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';if(at==='Ace')return card.type==='Libero';return false;}
+      if(at==='Tip'){if(card.type==='Block')return false;if(card.type==='Zone'&&(card.zone===az||isAdjacent(card.zone,az)))return true;return card.type==='Libero';}
+      if(at==='Zone')return card.type==='Block'||(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';
+      if(at==='PowerSpike')return card.type==='Block'||card.type==='Libero';
+    }
+    if(ts===TS.Cover){if(at==='PowerSpike')return card.type==='Zone'||card.type==='Libero';if(at==='Zone')return(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';return false;}
+    return false;
+  });
+  if (!hasPlay) {
+    const winner = activePlayer===1 ? 2 : 1;
+    addLog(state,'⚠️','point','Player '+activePlayer+' has no valid cards');
+    awardPoint(room, winner);
+  }
 }
  
 function handleTimeout(room, playerNum) {
@@ -315,6 +379,10 @@ function scheduleTimeout(room) {
 }
  
 wss.on('connection', (ws) => {
+  // Keep connection alive through Railway's proxy
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+ 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch(e){ return; }
@@ -342,6 +410,7 @@ wss.on('connection', (ws) => {
       room.players[0].send(JSON.stringify({type:'JOINED', opponentReady:true}));
       broadcast(room, room.state);
       scheduleTimeout(room);
+      checkNoPlayable(room);
       return;
     }
  
@@ -370,6 +439,7 @@ wss.on('connection', (ws) => {
       room.state = initGameState(Math.random()>0.5);
       broadcast(room, room.state);
       scheduleTimeout(room);
+      checkNoPlayable(room);
       return;
     }
   });
@@ -384,5 +454,14 @@ wss.on('connection', (ws) => {
     delete rooms[ws.roomCode];
   });
 });
+ 
+// Ping all clients every 25s to keep Railway proxy connections alive
+setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
  
 server.listen(PORT, () => console.log(`VolleyCards server running on port ${PORT}`));
