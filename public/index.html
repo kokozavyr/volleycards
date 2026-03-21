@@ -430,6 +430,8 @@ function renderState(s) {
   var msgText='', msgHl=false;
   if (s.matchOver) {
     msgText='Player '+s.winner+' wins the match! 🏆'; msgHl=true;
+  } else if (s.paused && s.pointScorer) {
+    msgText='🎉 Player '+s.pointScorer+' wins the point! Next rally starting...'; msgHl=true;
   } else if (s.isMyTurn) {
     var labels={Serve:'select a serve card',Attack:'select an attack card',Defense:'select a defense card',Cover:'select a cover card'};
     msgText='Your turn — '+(labels[s.turnState]||''); msgHl=true;
@@ -456,8 +458,29 @@ function renderState(s) {
     tiFill.className='ti-fill inactive'; tiFill.style.width='0%';
   }
  
-  var p1att=s.attPlayer===1;
-  placeBall(p1att?0.12:0.88, 0.75);
+  // Ball position based on server-tracked ballSide
+  if (s.ballSide) {
+    var ballOnP1 = s.ballSide===1;
+    if (s.lastAction==='serve') {
+      // Ball travelling across net
+      placeBall(ballOnP1?0.75:0.25, 0.5);
+    } else if (s.lastAction==='attack') {
+      // Ball on defender's side
+      placeBall(ballOnP1?0.2:0.8, 0.5);
+    } else if (s.lastAction==='defend') {
+      // Ball back with new attacker
+      placeBall(ballOnP1?0.2:0.8, 0.7);
+    } else if (s.lastAction==='point') {
+      // Ball stays where it landed
+      placeBall(ballOnP1?0.2:0.8, 0.5);
+    } else {
+      // Serve phase - ball with server
+      placeBall(ballOnP1?0.15:0.85, 0.75);
+    }
+  } else {
+    var p1att=s.attPlayer===1;
+    placeBall(p1att?0.15:0.85, 0.75);
+  }
  
   var flag=document.getElementById('serve-flag'), ct=document.getElementById('court');
   if (s.turnState==='Serve') {
@@ -468,7 +491,10 @@ function renderState(s) {
   } else { flag.style.display='none'; }
  
   clearZones();
-  if (s.atkZone&&s.turnState!=='Serve') highlightZone(s.atkZone, s.defPlayer);
+  // Only show zone highlight when ball is on defender's side (during defense turn)
+  if (s.atkZone && s.atkZone>0 && s.turnState==='Defense') {
+    highlightZone(s.atkZone, s.defPlayer);
+  }
  
   if (s.log) {
     var list=document.getElementById('log-list'); list.innerHTML='';
@@ -479,6 +505,11 @@ function renderState(s) {
     document.getElementById('ov-title').textContent='Player '+s.winner+' Wins!';
     document.getElementById('ov-msg').textContent='Well played.';
     document.getElementById('match-overlay').classList.add('show');
+    spawnConfetti();
+  }
+ 
+  // Confetti on point
+  if (s.pointScorer && !s.matchOver) {
     spawnConfetti();
   }
 }
@@ -508,7 +539,7 @@ function onCardClick(card, s) {
   } else { selectedCardIds.push(card.id); }
   document.getElementById('playbtn').disabled=selectedCardIds.length===0;
   clearZones();
-  if (s.atkZone&&s.turnState!=='Serve') highlightZone(s.atkZone,s.defPlayer);
+  if (s.atkZone&&s.atkZone>0&&s.turnState==='Defense') highlightZone(s.atkZone,s.defPlayer);
   var selCards=(s.myHand||[]).filter(function(c){ return selectedCardIds.indexOf(c.id)!==-1; });
   var selZone=selCards.filter(function(c){return c.type==='Zone';})[0];
   var selTip=selCards.filter(function(c){return c.type==='Tip';})[0];
