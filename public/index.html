@@ -98,10 +98,11 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);-web
 #timer-label{font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
  
 /* MESSAGE BAR */
-#msgbar{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:9px 16px;color:var(--text);font-weight:600;font-size:0.88rem;margin-bottom:5px;width:100%;max-width:560px;text-align:center;min-height:38px;transition:background 0.3s,border-color 0.3s,color 0.3s,opacity 0.2s;}
-#msgbar.hl{background:rgba(240,180,41,0.12);border-color:rgba(240,180,41,0.35);color:var(--accent);}
-#msgbar.pt{background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);color:var(--green);}
-#msgbar.fade{opacity:0;}
+#msgbar{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:8px 16px;color:var(--text);margin-bottom:5px;width:100%;max-width:560px;text-align:center;min-height:52px;transition:background 0.3s,border-color 0.3s;}
+#msgbar.hl{background:rgba(240,180,41,0.12);border-color:rgba(240,180,41,0.35);}
+#msgbar.hl #msg-prompt{color:var(--accent);}
+#msgbar.pt{background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);}
+#msgbar.pt #msg-prompt{color:var(--green);}
  
 /* OPP HAND */
 #opp-area{width:100%;max-width:560px;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;}
@@ -267,7 +268,10 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);-web
     </div>
     <div id="timer-label">Seconds</div>
   </div>
-  <div id="msgbar">Connecting...</div>
+  <div id="msgbar">
+    <div id="msg-action" style="font-size:0.75rem;color:var(--muted);min-height:18px;margin-bottom:2px;transition:opacity 0.3s;"></div>
+    <div id="msg-prompt" style="font-weight:700;font-size:0.88rem;min-height:20px;transition:opacity 0.3s;"></div>
+  </div>
   <div id="opp-area">
     <div class="opp-label" id="opp-label">Opponent</div>
     <div class="opp-cards" id="opp-cards"></div>
@@ -331,8 +335,8 @@ var selectedCardIds=[], timerInterval=null, timerSecs=12;
 var myReady=false, oppReady=false;
 var prevPointScorer=null;
  
-// Message queue
-var msgQueue=[], msgBusy=false, msgTimer=null;
+// Message system — two line display, no queue needed
+var msgFadeTimer=null;
  
 var CORR=[[1,7,2],[6,8,3],[5,9,4]];
 var CORR_SETS=CORR.map(function(r){return new Set(r);});
@@ -419,32 +423,18 @@ function updatePips(){
   po.className='ready-pip '+(oppReady?'rdy':'wait');
 }
  
-// Message queue system
-function queueMsg(text,style,duration){
-  msgQueue.push({text:text,style:style||'normal',dur:duration||2200});
-  if(!msgBusy)showNextMsg();
-}
-function showNextMsg(){
-  if(!msgQueue.length){msgBusy=false;return;}
-  msgBusy=true;
-  var item=msgQueue.shift();
-  var el=document.getElementById('msgbar');
-  el.classList.add('fade');
-  setTimeout(function(){
-    el.className='';el.id='msgbar';
-    el.textContent=item.text;
-    if(item.style==='hl')el.classList.add('hl');
-    else if(item.style==='pt')el.classList.add('pt');
-    msgTimer=setTimeout(showNextMsg,item.dur);
-  },200);
-}
-function setMsgNow(text,style){
-  clearTimeout(msgTimer);msgQueue=[];msgBusy=false;
-  var el=document.getElementById('msgbar');
-  el.className='';el.id='msgbar';
-  el.textContent=text;
-  if(style==='hl')el.classList.add('hl');
-  else if(style==='pt')el.classList.add('pt');
+// Set two-line message: action = what just happened, prompt = what to do / who to wait for
+function setMsg(action, prompt, promptStyle){
+  var ea=document.getElementById('msg-action');
+  var ep=document.getElementById('msg-prompt');
+  var mb=document.getElementById('msgbar');
+  mb.className='';mb.id='msgbar';
+  if(action){ea.textContent=action;ea.style.display='block';}
+  else{ea.textContent='';ea.style.display='none';}
+  ep.textContent=prompt||'';
+  if(promptStyle==='hl'){mb.classList.add('hl');ep.style.color='';}
+  else if(promptStyle==='pt'){mb.classList.add('pt');ep.style.color='';}
+  else{ep.style.color='';}
 }
  
 // Render
@@ -478,33 +468,54 @@ function renderState(s){
   var oc=document.getElementById('opp-cards');oc.innerHTML='';
   for(var j=0;j<(s.oppHandCount||0);j++){var d=document.createElement('div');d.className='opp-card';oc.appendChild(d);}
  
-  // Messages
+  // Messages — show last action + current prompt
   var isNewPoint=s.pointScorer&&s.pointScorer!==prevPointScorer;
-  var isNewAction=s.lastAction!==prevLastAction;
+  if(isNewPoint) prevPointScorer=s.pointScorer;
+  prevLastAction=s.lastAction;
  
-  if(s.matchOver){
-    var isMe=s.winner===myPlayerNum;
-    setMsgNow((isMe?'You win':''+s.winnerName+' wins')+' the match! 🏆','pt');
-  } else if(isNewPoint&&s.paused){
-    var scorerMe=s.pointScorer===myPlayerNum;
-    queueMsg((scorerMe?'You win':s.pointScorerName+' wins')+' the point! 🎉','pt',2800);
-    prevPointScorer=s.pointScorer;
-  } else if(!s.paused&&s.isMyTurn&&isNewAction){
-    var prompts={Serve:'Your turn — select a serve card',Attack:'Your turn — select an attack card',Defense:'Your turn — select a defense card',Cover:'Your turn — play a cover card'};
-    setMsgNow(prompts[s.turnState]||'Your turn','hl');
-  } else if(!s.paused&&!s.isMyTurn&&isNewAction){
-    if(s.log&&s.log.length){
-      var last=s.log[s.log.length-1];
-      if(last.player!=='point'){
-        queueMsg(last.text,'normal',2000);
-        queueMsg('Waiting for '+s.oppName+'...','normal',99999);
-      }
-    } else {
-      setMsgNow('Waiting for '+s.oppName+'...','normal');
+  // Last action line — what just happened
+  var actionText='';
+  if(s.log&&s.log.length){
+    // Find most recent non-point log entry
+    for(var li=s.log.length-1;li>=0;li--){
+      if(s.log[li].player!=='point'){actionText=s.log[li].text;break;}
     }
   }
  
-  prevLastAction=s.lastAction;
+  // Prompt line — what to do now or who to wait for
+  var promptText='', promptStyle='normal';
+  if(s.matchOver){
+    var isMe2=s.winner===myPlayerNum;
+    actionText='';
+    promptText=(isMe2?'You win':''+s.winnerName+' wins')+' the match! 🏆';
+    promptStyle='pt';
+  } else if(s.paused&&s.pointScorer){
+    var scorerMe=s.pointScorer===myPlayerNum;
+    actionText='';
+    promptText=(scorerMe?'You win':s.pointScorerName+' wins')+' the point! 🎉 Next rally soon...';
+    promptStyle='pt';
+  } else if(s.isMyTurn){
+    var prompts={
+      Serve:'Your turn — select a serve card',
+      Attack:'Your turn — select an attack card',
+      Defense:'Your turn — select a defense card',
+      Cover:'Your turn — play a cover card'
+    };
+    promptText=prompts[s.turnState]||'Your turn';
+    promptStyle='hl';
+  } else {
+    // Waiting — show what we're waiting for
+    var waitingFor={
+      Serve:s.attName+' is choosing a serve...',
+      Attack:s.attName+' is choosing an attack...',
+      Defense:s.defName+' is defending...',
+      Cover:s.attName+' needs to cover...'
+    };
+    promptText=waitingFor[s.turnState]||'Waiting for '+s.oppName+'...';
+    promptStyle='normal';
+  }
+ 
+  setMsg(actionText, promptText, promptStyle);
  
   // Hand
   renderHand(s.myHand||[],s);
@@ -729,7 +740,6 @@ function spawnConfetti(){
  
 function sendRematch(){
   document.getElementById('match-overlay').classList.remove('show');
-  clearTimeout(msgTimer);msgQueue=[];msgBusy=false;
   prevLastAction=null;prevPointScorer=null;
   sendWS({type:'REMATCH'});
 }
@@ -738,9 +748,11 @@ function goLobby(){
   document.getElementById('match-overlay').classList.remove('show');
   document.getElementById('opp-left').classList.remove('show');
   clearInterval(timerInterval);clearTimeout(msgTimer);
-  msgQueue=[];msgBusy=false;selectedCardIds=[];
+  selectedCardIds=[];
   lastState=null;prevLastAction=null;prevPointScorer=null;
   myReady=false;oppReady=false;
+  // Close WebSocket — server will delete the room on disconnect
+  if(ws){ ws.onclose=null; ws.close(); ws=null; }
   document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('active');});
   document.getElementById('s-lobby').classList.add('active');
   showStep('connect');
@@ -750,6 +762,8 @@ function goLobby(){
   document.getElementById('lobby-error').textContent='';
   var btn=document.getElementById('ready-btn');btn.disabled=false;btn.textContent='Ready ✓';
   updatePips();
+  // Reconnect fresh after small delay
+  setTimeout(connect, 300);
 }
  
 document.getElementById('playbtn').addEventListener('click',onPlay);
