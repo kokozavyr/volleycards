@@ -66,6 +66,8 @@ function initGameState(firstP1, p1name, p2name) {
     log:[], matchOver:false, winner:null,
     paused:false, pointScorer:null,
     lastAction:'serve', ballSide:firstP1?1:2,
+    ballZone:0,         // targeted zone (0 = no specific zone)
+    pointHow:'',        // human-readable how point was scored
   };
 }
  
@@ -124,9 +126,8 @@ function buildPayload(state, playerNum) {
     pointScorerName:state.pointScorer ? playerName(state,state.pointScorer) : null,
     lastAction:state.lastAction||null,
     ballSide:state.ballSide||null,
-    // Perspective-aware action description for message bar
-    actionMsg:state.actionMsg||null,
-    actionMsgFor:state.actionMsgFor||null, // null=both, 1=p1only, 2=p2only
+    ballZone:state.ballZone||0,
+    pointHow:state.pointHow||'',
   };
 }
  
@@ -148,13 +149,14 @@ function doSwap(state, defHand, cards, playerNum, desc) {
   state.atkZone = 0;
 }
  
-function awardPoint(room, scorerNum) {
+function awardPoint(room, scorerNum, how) {
   const state = room.state;
   Object.values(room.timers).forEach(t=>clearTimeout(t));
   room.timers = {};
   if(scorerNum===1){ state.p1Score++; state.p1Serving=true; }
   else{ state.p2Score++; state.p1Serving=false; }
-  addLog(state,'🎉','point', playerName(state,scorerNum)+' wins the point!');
+  state.pointHow = how || '';
+  addLog(state,'🎉','point', playerName(state,scorerNum)+' wins the point!'+(how?' ('+how+')':''));
   state.lastAction='point'; state.pointScorer=scorerNum; state.paused=true;
  
   if(winsSet(state.p1Score,state.p2Score)){
@@ -228,7 +230,7 @@ function checkNoPlayable(room) {
   if(!hasPlay){
     const winner = active===1?2:1;
     addLog(state,'⚠️','point', playerName(state,active)+' has no valid cards');
-    awardPoint(room,winner);
+    awardPoint(room,winner,'No valid cards for '+playerName(state,active));
   }
 }
  
@@ -239,7 +241,7 @@ function handleTimeout(room, playerNum) {
   if(active!==playerNum) return;
   const winner=playerNum===state.attPlayer?state.defPlayer:state.attPlayer;
   addLog(state,'⏰','point', playerName(state,playerNum)+' ran out of time');
-  awardPoint(room,winner);
+  awardPoint(room,winner,playerName(state,playerNum)+' ran out of time');
 }
  
 function scheduleTimeout(room) {
@@ -275,7 +277,9 @@ function processPlay(room, playerNum, cardIds) {
       addLog(state,'🏐','p'+playerNum, me+' served to Zone '+c.zone);
     }
     state.turnState=TS.Defense; state.isServePhase=true;
-    state.lastAction='serve'; state.ballSide=state.defPlayer;
+    state.lastAction='serve';
+    state.ballSide=state.defPlayer;
+    state.ballZone = (state.atkType===AT.Ace) ? 0 : state.atkZone;
     broadcast(room,state); checkNoPlayable(room); return;
   }
  
@@ -319,7 +323,7 @@ function processPlay(room, playerNum, cardIds) {
       if(bc===1&&zc===1){ removeCards(defHand,cids); addLog(state,'🛡️','p'+playerNum,me+' blocked and dug — ball returns'); state.turnState=TS.Attack; state.lastAction='defend'; state.ballSide=state.attPlayer; state.atkZone=0; broadcast(room,state); checkNoPlayable(room); return; }
       if(bc>=2&&zc===0){
         removeCards(defHand,cids);
-        if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum); return; }
+        if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum,'Triple Block by '+me); return; }
         addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; broadcast(room,state); checkNoPlayable(room); return;
       }
       return;
@@ -329,7 +333,7 @@ function processPlay(room, playerNum, cardIds) {
       if(zc===1&&bc===0&&sameCorridor(cards[0].zone,state.atkZone)){ doSwap(state,defHand,cards,playerNum,'received in corridor'); broadcast(room,state); checkNoPlayable(room); return; }
       if(bc>=1&&zc===0){
         removeCards(defHand,cids);
-        if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum); return; }
+        if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum,'Triple Block by '+me); return; }
         if(bc===2){ addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; broadcast(room,state); checkNoPlayable(room); return; }
         addLog(state,'🛡️','p'+playerNum,me+' single blocked — ball returns'); state.turnState=TS.Attack; state.lastAction='defend'; state.ballSide=state.attPlayer; state.atkZone=0; broadcast(room,state); checkNoPlayable(room); return;
       }
@@ -343,7 +347,7 @@ function processPlay(room, playerNum, cardIds) {
     if(at===AT.Ace){
       if(lib&&cards.length===1){ doSwap(state,defHand,cards,playerNum,'received the Ace with Libero'); broadcast(room,state); checkNoPlayable(room); return; }
       addLog(state,'🚀','p'+state.attPlayer, playerName(state,state.attPlayer)+' aced it — point!');
-      awardPoint(room,state.attPlayer); return;
+      awardPoint(room,state.attPlayer,'Ace by '+playerName(state,state.attPlayer)); return;
     }
     return;
   }
