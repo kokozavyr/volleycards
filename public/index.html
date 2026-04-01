@@ -468,48 +468,47 @@ function renderState(s){
   var oc=document.getElementById('opp-cards');oc.innerHTML='';
   for(var j=0;j<(s.oppHandCount||0);j++){var d=document.createElement('div');d.className='opp-card';oc.appendChild(d);}
  
-  // Messages — show last action + current prompt
+  // Messages
   var isNewPoint=s.pointScorer&&s.pointScorer!==prevPointScorer;
   if(isNewPoint) prevPointScorer=s.pointScorer;
   prevLastAction=s.lastAction;
  
-  // Last action line — what just happened
-  var actionText='';
-  if(s.log&&s.log.length){
-    // Find most recent non-point log entry
-    for(var li=s.log.length-1;li>=0;li--){
-      if(s.log[li].player!=='point'){actionText=s.log[li].text;break;}
-    }
-  }
+  var actionText='', promptText='', promptStyle='normal';
  
-  // Prompt line — what to do now or who to wait for
-  var promptText='', promptStyle='normal';
   if(s.matchOver){
     var isMe2=s.winner===myPlayerNum;
-    actionText='';
-    promptText=(isMe2?'You win':''+s.winnerName+' wins')+' the match! 🏆';
+    actionText=s.pointHow||'';
+    promptText=(isMe2?'You win':s.winnerName+' wins')+' the match! 🏆';
     promptStyle='pt';
   } else if(s.paused&&s.pointScorer){
+    // Point just scored — show HOW it happened, keep cards visible
     var scorerMe=s.pointScorer===myPlayerNum;
-    actionText='';
-    promptText=(scorerMe?'You win':s.pointScorerName+' wins')+' the point! 🎉 Next rally soon...';
+    actionText=s.pointHow||'';
+    promptText=(scorerMe?'You win the point! 🎉':s.pointScorerName+' wins the point!');
     promptStyle='pt';
   } else if(s.isMyTurn){
+    // Clean start — no previous action shown
+    actionText='';
     var prompts={
-      Serve:'Your turn — select a serve card',
-      Attack:'Your turn — select an attack card',
-      Defense:'Your turn — select a defense card',
-      Cover:'Your turn — play a cover card'
+      Serve:'Select a serve card',
+      Attack:'Select an attack card',
+      Defense:'Select a defense card',
+      Cover:'Select a cover card'
     };
     promptText=prompts[s.turnState]||'Your turn';
     promptStyle='hl';
   } else {
-    // Waiting — show what we're waiting for
+    // Waiting — show last action + who we're waiting for
+    if(s.log&&s.log.length){
+      for(var li=s.log.length-1;li>=0;li--){
+        if(s.log[li].player!=='point'){actionText=s.log[li].text;break;}
+      }
+    }
     var waitingFor={
-      Serve:s.attName+' is choosing a serve...',
-      Attack:s.attName+' is choosing an attack...',
+      Serve:s.attName+' is selecting a serve...',
+      Attack:s.attName+' is selecting an attack...',
       Defense:s.defName+' is defending...',
-      Cover:s.attName+' needs to cover...'
+      Cover:s.attName+' is selecting a cover card...'
     };
     promptText=waitingFor[s.turnState]||'Waiting for '+s.oppName+'...';
     promptStyle='normal';
@@ -568,15 +567,83 @@ function renderState(s){
   }
 }
  
+// Zone grid positions on court (0..1 coordinates)
+// LEFT_GRID layout: row0=[5,9,4] row1=[6,8,3] row2=[1,7,2]  (top to bottom)
+// RIGHT_GRID layout: row0=[2,7,1] row1=[3,8,6] row2=[4,9,5]
+var ZONE_POS_LEFT = {};
+var ZONE_POS_RIGHT = {};
+(function(){
+  var lg=[[5,9,4],[6,8,3],[1,7,2]];
+  var rg=[[2,7,1],[3,8,6],[4,9,5]];
+  var cols=[1/6,3/6,5/6]; // x within half: left=0..0.5, right=0.5..1
+  var rows=[1/6,3/6,5/6]; // y within court
+  lg.forEach(function(row,r){
+    row.forEach(function(z,c){
+      // x is within left half (0..0.47)
+      ZONE_POS_LEFT[z]={x:cols[c]*0.47, y:rows[r]};
+    });
+  });
+  rg.forEach(function(row,r){
+    row.forEach(function(z,c){
+      // x is within right half (0.53..1)
+      ZONE_POS_RIGHT[z]={x:0.53+cols[c]*0.47, y:rows[r]};
+    });
+  });
+}());
+ 
 function updateBall(s){
+  var ct=document.getElementById('court');
   if(!s.ballSide){placeBall(0.5,0.5);return;}
-  var L=s.ballSide===1;
+  var serversLeft = s.attPlayer===1; // who is serving/attacking — they're always on left? No — P1 is always left.
+  // P1 is always on the LEFT side of the court visually.
   var x,y;
-  if(s.lastAction==='serve'){x=L?0.68:0.32;y=0.5;}
-  else if(s.lastAction==='attack'){x=L?0.18:0.82;y=0.5;}
-  else if(s.lastAction==='defend'||s.lastAction==='block'){x=L?0.18:0.82;y=0.68;}
-  else if(s.lastAction==='point'){x=L?0.18:0.82;y=0.5;}
-  else{x=L?0.14:0.86;y=0.72;}
+  var la=s.lastAction;
+  var bz=s.ballZone||0;
+  var ballOnP1Side = s.ballSide===1; // ball is on P1's side (left)
+ 
+  if(la==='serve'||la===null||la===undefined){
+    // Ball on server's side before serve, or just after serve moving toward target zone
+    if(bz>0){
+      // Serve played — ball at target zone on DEFENDER's side
+      var defIsP1=(s.defPlayer===1);
+      var pos=defIsP1?ZONE_POS_LEFT[bz]:ZONE_POS_RIGHT[bz];
+      if(pos){x=pos.x;y=pos.y;}
+      else{x=ballOnP1Side?0.25:0.75;y=0.5;}
+    } else if(s.atkType==='Ace'){
+      // Ace serve — center-back of defender's court
+      x=ballOnP1Side?0.25:0.75; y=0.7;
+    } else {
+      // Pre-serve — ball at server's back
+      x=ballOnP1Side?0.15:0.85; y=0.75;
+    }
+  } else if(la==='attack'){
+    // Ball just attacked — near target zone on defender's side
+    if(bz>0){
+      var defIsP1b=(s.defPlayer===1);
+      var pos2=defIsP1b?ZONE_POS_LEFT[bz]:ZONE_POS_RIGHT[bz];
+      if(pos2){x=pos2.x;y=pos2.y;}
+      else{x=ballOnP1Side?0.2:0.8;y=0.5;}
+    } else {
+      x=ballOnP1Side?0.2:0.8;y=0.5;
+    }
+  } else if(la==='defend'){
+    // Ball defended — center of court, transitioning to attacker
+    x=0.5;y=0.45;
+  } else if(la==='block'){
+    // Ball blocked — center-ish, slightly toward new attacker
+    x=ballOnP1Side?0.35:0.65;y=0.45;
+  } else if(la==='point'){
+    // Ball stays at last position — wherever it landed
+    if(bz>0){
+      var pos3=ballOnP1Side?ZONE_POS_LEFT[bz]:ZONE_POS_RIGHT[bz];
+      if(pos3){x=pos3.x;y=pos3.y;}
+      else{x=ballOnP1Side?0.2:0.8;y=0.5;}
+    } else {
+      x=ballOnP1Side?0.2:0.8;y=0.5;
+    }
+  } else {
+    x=ballOnP1Side?0.15:0.85;y=0.75;
+  }
   placeBall(x,y);
 }
  
