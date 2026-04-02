@@ -1,81 +1,852 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Volley Cards</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VolleyCards</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body { font-family: Arial; text-align:center; }
-  #court { width:400px; height:600px; margin:20px auto; position:relative; border:2px solid black; }
-  #net { position:absolute; top:50%; width:100%; height:2px; background:black; }
-  .zone { position:absolute; width:33.33%; height:16.66%; border:1px solid #ccc; box-sizing:border-box; }
-  #ball { width:20px; height:20px; background:red; border-radius:50%; position:absolute; transition: all 0.5s ease; }
+:root{
+  --bg:#080c10;--surface:#0e1419;--panel:#1a2330;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.18);
+  --p1:#e8453c;--p2:#00c4b4;--accent:#f0b429;
+  --text:#e8edf2;--muted:#5a6474;--green:#22c55e;--r:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;overflow-y:auto;}
+.screen.active{display:flex;}
+ 
+/* LOBBY */
+#s-lobby{justify-content:center;padding:40px 24px;background:var(--bg);background-image:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(240,180,41,0.07) 0%,transparent 60%),radial-gradient(ellipse 60% 60% at 0% 100%,rgba(0,196,180,0.06) 0%,transparent 60%),radial-gradient(ellipse 60% 60% at 100% 0%,rgba(232,69,60,0.06) 0%,transparent 60%);}
+#s-lobby::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;}
+.lobby-logo{text-align:center;margin-bottom:40px;position:relative;z-index:1;}
+.lobby-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.22);border-radius:20px;padding:5px 14px;font-size:0.68rem;font-weight:700;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:16px;}
+.lobby-logo h1{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:3.8rem;color:var(--text);letter-spacing:-1px;text-transform:uppercase;line-height:1;}
+.lobby-logo h1 em{font-style:normal;background:linear-gradient(135deg,#f0b429,#ff7a00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.lobby-logo p{font-size:0.7rem;font-weight:600;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:6px;}
+.lobby-card{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:24px 22px;width:100%;max-width:340px;position:relative;z-index:1;}
+.lobby-divider{display:flex;align-items:center;gap:10px;margin:18px 0;}
+.lobby-divider::before,.lobby-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.lobby-divider span{font-size:0.65rem;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+.lbtn{font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:none;border-radius:var(--r);cursor:pointer;width:100%;padding:13px;transition:transform 0.15s,box-shadow 0.15s;}
+.lbtn:hover{transform:translateY(-1px);}
+.lbtn:active{transform:scale(0.98);}
+.lbtn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.lbtn-primary{background:linear-gradient(135deg,#f0b429,#ff7a00);color:#0a0e12;box-shadow:0 4px 16px rgba(240,180,41,0.3);}
+.lbtn-primary:hover{box-shadow:0 8px 24px rgba(240,180,41,0.45);}
+.lbtn-sec{background:var(--surface);color:var(--text);border:1px solid var(--border2);margin-top:10px;}
+.lbtn-green{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;box-shadow:0 4px 14px rgba(34,197,94,0.3);}
+.linput{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);padding:12px 14px;font-family:'Barlow Condensed',sans-serif;font-size:1.2rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;text-align:center;outline:none;margin-bottom:10px;transition:border-color 0.15s;}
+.linput:focus{border-color:var(--accent);}
+.linput::placeholder{color:var(--muted);letter-spacing:2px;font-size:0.9rem;}
+.nameinput{letter-spacing:1px;text-transform:none;font-size:1rem;}
+.nameinput::placeholder{letter-spacing:1px;font-size:0.9rem;}
+.lobby-error{font-size:0.78rem;color:var(--p1);text-align:center;margin-top:8px;min-height:18px;font-weight:600;}
+.wcode{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:3.2rem;color:var(--accent);letter-spacing:8px;margin:14px 0 8px;text-align:center;}
+.wmsg{font-size:0.82rem;color:var(--muted);line-height:1.6;margin-bottom:16px;text-align:center;}
+.pulse{animation:pulse 1.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.section-label{font-size:0.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;text-align:center;}
+.ready-status{display:flex;gap:8px;justify-content:center;margin-top:12px;}
+.ready-pip{font-size:0.72rem;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:5px;border:1px solid;}
+.ready-pip.rdy{color:var(--green);border-color:rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);}
+.ready-pip.wait{color:var(--muted);border-color:var(--border);}
+ 
+/* GAME */
+#s-game{background:var(--bg);background-image:radial-gradient(ellipse 70% 30% at 50% 0%,rgba(240,180,41,0.04) 0%,transparent 60%);padding:8px 8px 20px;align-items:center;}
+#topbar{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:560px;padding:8px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+#topbar-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.2rem;letter-spacing:2px;text-transform:uppercase;color:var(--text);}
+#topbar-title em{font-style:normal;color:var(--accent);}
+#role-badge{font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 10px;border-radius:5px;border:1px solid;}
+#role-badge.p1{color:var(--p1);border-color:rgba(232,69,60,0.35);background:rgba(232,69,60,0.08);}
+#role-badge.p2{color:var(--p2);border-color:rgba(0,196,180,0.35);background:rgba(0,196,180,0.08);}
+ 
+/* SCOREBOARD */
+#scoreboard{display:flex;align-items:stretch;width:100%;max-width:560px;margin-bottom:7px;background:#1e2a38;border:1px solid rgba(255,255,255,0.22);border-radius:var(--r);overflow:hidden;flex-shrink:0;}
+.sb-box{flex:1;padding:9px 12px;}
+.sb-box.right{text-align:right;}
+.sb-name{font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sb-name.c1{color:var(--p1);}.sb-name.c2{color:var(--p2);}
+.sb-pts{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:2.4rem;line-height:1;color:var(--text);}
+.sb-sets{font-size:0.65rem;color:var(--muted);margin-top:1px;}
+.sb-dots{display:flex;gap:4px;margin-top:3px;}
+.right .sb-dots{justify-content:flex-end;}
+.sdot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.12);transition:all 0.3s;}
+.sdot.w1{background:var(--p1);}.sdot.w2{background:var(--p2);}
+.sb-mid{display:flex;align-items:center;justify-content:center;padding:0 12px;border-left:1px solid rgba(255,255,255,0.15);border-right:1px solid rgba(255,255,255,0.15);flex-shrink:0;}
+.sb-mid span{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.6rem;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+ 
+/* TURN INDICATOR */
+#turn-indicator{width:100%;max-width:560px;margin-bottom:3px;}
+.ti-bar{height:3px;border-radius:2px;background:var(--border);overflow:hidden;}
+.ti-fill{height:100%;border-radius:2px;}
+.ti-fill.active{background:var(--accent);}
+.ti-fill.inactive{background:var(--muted);width:0%!important;transition:none;}
+ 
+.ti-label{font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;text-align:right;margin-top:2px;}
+.ti-label.my-turn{color:var(--accent);}
+ 
+/* TIMER */
+#timer-wrap{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:5px;width:100%;max-width:560px;}
+#timer-ring{position:relative;width:36px;height:36px;}
+#timer-ring svg{transform:rotate(-90deg);}
+#timer-ring circle.bg{fill:none;stroke:rgba(255,255,255,0.07);stroke-width:3;}
+#timer-ring circle.fg{fill:none;stroke-width:3;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke 0.5s;}
+#timer-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.88rem;color:var(--text);}
+#timer-label{font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+ 
+/* MESSAGE BAR */
+#msgbar{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:8px 16px;color:var(--text);margin-bottom:5px;width:100%;max-width:560px;text-align:center;min-height:52px;transition:background 0.3s,border-color 0.3s;}
+#msgbar.hl{background:rgba(240,180,41,0.12);border-color:rgba(240,180,41,0.35);}
+#msgbar.hl #msg-prompt{color:var(--accent);}
+#msgbar.pt{background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);}
+#msgbar.pt #msg-prompt{color:var(--green);}
+ 
+/* OPP HAND */
+#opp-area{width:100%;max-width:560px;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;}
+.opp-label{font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);}
+.opp-cards{display:flex;gap:4px;}
+.opp-card{width:28px;height:40px;border-radius:5px;background:var(--panel);border:1px solid var(--border);}
+ 
+/* COURT */
+#court-wrap{width:100%;max-width:560px;margin:4px auto;}
+#court{width:100%;height:155px;background:#1a5c2e;border-radius:var(--r);border:1px solid rgba(255,255,255,0.1);position:relative;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+#court::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 30px,rgba(0,0,0,0.07) 30px,rgba(0,0,0,0.07) 60px);pointer-events:none;}
+.cl{position:absolute;background:rgba(255,255,255,0.35);}
+.cl-top{top:4px;left:4px;right:4px;height:1.5px;}.cl-bot{bottom:4px;left:4px;right:4px;height:1.5px;}
+.cl-left{top:4px;bottom:4px;left:4px;width:1.5px;}.cl-right{top:4px;bottom:4px;right:4px;width:1.5px;}
+#net{position:absolute;left:50%;top:0;bottom:0;width:6px;transform:translateX(-50%);background:rgba(255,255,255,0.92);box-shadow:0 0 10px rgba(255,255,255,0.4);z-index:4;}
+#net::before,#net::after{content:'';position:absolute;left:50%;transform:translateX(-50%);width:14px;height:8px;background:var(--accent);border-radius:2px;}
+#net::before{top:-2px;}#net::after{bottom:-2px;}
+.zgrid{position:absolute;top:0;bottom:0;width:calc(50% - 3px);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);z-index:2;}
+.zgrid.zl{left:0;}.zgrid.zr{right:0;}
+.zcell{border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.78rem;color:rgba(255,255,255,0.35);transition:background 0.2s;position:relative;}
+.zcell.gold{background:rgba(240,180,41,0.32);color:#fff;border-color:rgba(240,180,41,0.55);}
+.zcell.gold::after{content:'';position:absolute;inset:2px;border:1.5px solid rgba(240,180,41,0.7);border-radius:2px;pointer-events:none;}
+.zcell.blue{background:rgba(0,196,180,0.22);color:#fff;border-color:rgba(0,196,180,0.45);}
+.arr-layer{position:absolute;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:space-evenly;}
+.arr-ch{display:inline-block;width:11px;height:11px;border-top:2.5px solid rgba(0,196,180,0.85);border-right:2.5px solid rgba(0,196,180,0.85);opacity:0;flex-shrink:0;animation:arrP 0.85s ease-in-out infinite;}
+.arr-ch:nth-child(1){animation-delay:0s;}.arr-ch:nth-child(2){animation-delay:0.28s;}.arr-ch:nth-child(3){animation-delay:0.56s;}
+.arr-ch.ar{transform:rotate(45deg);}.arr-ch.al{transform:rotate(225deg);}
+@keyframes arrP{0%{opacity:0}30%{opacity:0.9}70%{opacity:0.9}100%{opacity:0}}
+#serve-flag{position:absolute;z-index:8;pointer-events:none;display:none;flex-direction:column;align-items:center;gap:2px;animation:sfB 0.9s ease-in-out infinite;}
+#serve-flag .sfb{font-size:15px;}
+#serve-flag .sfl{font-family:'Barlow Condensed',sans-serif;font-size:0.48rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#fff;background:rgba(0,0,0,0.6);padding:1px 5px;border-radius:3px;white-space:nowrap;}
+@keyframes sfB{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+#ball{position:absolute;font-size:22px;line-height:1;z-index:6;transition:left 0.5s cubic-bezier(.34,1.56,.64,1),top 0.5s cubic-bezier(.34,1.56,.64,1);pointer-events:none;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.8));}
+ 
+/* HAND */
+#my-area{width:100%;max-width:560px;margin-bottom:2px;}
+.my-label{font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.cards-row{display:flex;gap:5px;flex-wrap:wrap;min-height:84px;align-items:flex-end;}
+.card{width:56px;height:78px;border-radius:var(--r);background:var(--panel);border:1px solid var(--border2);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;user-select:none;transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s,opacity 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);position:relative;overflow:visible;}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--r) var(--r) 0 0;}
+.card.cZone::before{background:#00c4b4;}.card.cPowerSpike::before{background:#e8453c;}
+.card.cTip::before{background:#8b5cf6;}.card.cBlock::before{background:#f0b429;}
+.card.cLibero::before{background:#22c55e;}.card.cAce::before{background:#3b82f6;}
+.card:hover:not(.locked){transform:translateY(-10px) scale(1.05);box-shadow:0 14px 28px rgba(0,0,0,0.4);border-color:rgba(255,255,255,0.25);z-index:20;}
+.card.selected{border-color:var(--accent)!important;transform:translateY(-12px) scale(1.07);box-shadow:0 0 0 2px var(--accent),0 14px 28px rgba(240,180,41,0.25);z-index:20;}
+.card.locked{opacity:0.22;cursor:not-allowed;filter:grayscale(0.6);transform:none!important;}
+.card-icon{font-size:1.4rem;line-height:1;}.card-num{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.8rem;color:var(--text);line-height:1;}.card-lbl{font-family:'Barlow Condensed',sans-serif;font-size:0.52rem;font-weight:700;letter-spacing:1px;color:var(--muted);margin-top:1px;text-transform:uppercase;}
+.tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1a2332;border:1px solid var(--border2);border-radius:var(--r);padding:7px 9px;width:128px;font-size:0.62rem;color:#8a96a4;line-height:1.45;pointer-events:none;z-index:100;opacity:0;transition:opacity 0.15s;box-shadow:0 4px 16px rgba(0,0,0,0.5);}
+.tooltip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2332;}
+.tooltip strong{display:block;font-size:0.68rem;color:var(--text);margin-bottom:2px;font-weight:700;}
+.card:hover:not(.locked) .tooltip{opacity:1;}
+ 
+/* PLAY BTN */
+#playbtn-wrap{display:flex;justify-content:center;margin:6px 0 4px;}
+#playbtn{font-family:'Barlow Condensed',sans-serif;font-size:0.88rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;padding:10px 48px;border-radius:var(--r);border:none;background:linear-gradient(135deg,#f0b429,#ff7a00);color:#0a0e12;cursor:pointer;box-shadow:0 4px 16px rgba(240,180,41,0.3);transition:transform 0.15s,box-shadow 0.15s,opacity 0.2s;}
+#playbtn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 24px rgba(240,180,41,0.45);}
+#playbtn:active:not(:disabled){transform:scale(0.97);}
+#playbtn:disabled{opacity:0.25;cursor:not-allowed;}
+ 
+/* LOG */
+#log-wrap{width:100%;max-width:560px;margin-top:6px;}
+#log-title{font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+#log-list{display:flex;flex-direction:column;gap:2px;max-height:80px;overflow-y:auto;}
+#log-list::-webkit-scrollbar{width:3px;}#log-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px;}
+.log-entry{display:flex;align-items:center;gap:5px;font-size:0.64rem;color:var(--muted);background:var(--panel);border-radius:5px;padding:3px 7px;border-left:2px solid transparent;font-weight:500;}
+.log-entry.p1{border-color:var(--p1);}.log-entry.p2{border-color:var(--p2);}
+.log-entry.point{border-color:var(--accent);background:rgba(240,180,41,0.06);color:var(--text);font-weight:600;}
+ 
+/* LEGEND */
+#legend{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-top:6px;}
+.leg{display:flex;align-items:center;gap:3px;font-family:'Barlow Condensed',sans-serif;font-size:0.58rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:3px 7px;}
+.ldot{width:6px;height:6px;border-radius:50%;}
+ 
+/* OVERLAYS */
+#match-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+#match-overlay.show{display:flex;}
+.obox{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:40px 52px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,0.7);animation:popIn 0.4s cubic-bezier(.34,1.56,.64,1);max-width:340px;width:90%;}
+@keyframes popIn{from{transform:scale(0.85);opacity:0}to{transform:scale(1);opacity:1}}
+.obox .ow{font-size:2rem;margin-bottom:10px;}
+.obox h2{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.8rem;color:var(--text);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.obox p{color:var(--muted);font-size:0.82rem;margin-bottom:24px;}
+.obox-btns{display:flex;flex-direction:column;gap:8px;}
+.obox button{font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:11px 32px;border-radius:var(--r);border:none;cursor:pointer;transition:transform 0.15s;}
+.obox button:hover{transform:scale(1.04);}
+.btn-rematch{background:linear-gradient(135deg,#f0b429,#ff7a00);color:#0a0e12;}
+.btn-lobby{background:var(--surface);color:var(--muted);border:1px solid var(--border2);}
+#opp-left{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:200;align-items:center;justify-content:center;}
+#opp-left.show{display:flex;}
+.opp-left-box{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:40px 48px;text-align:center;max-width:300px;width:90%;}
+.opp-left-box h2{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.5rem;color:var(--text);letter-spacing:1px;text-transform:uppercase;margin:12px 0 8px;}
+.opp-left-box p{color:var(--muted);font-size:0.82rem;margin-bottom:24px;line-height:1.5;}
+.cfeti{position:fixed;border-radius:2px;pointer-events:none;z-index:300;animation:cfF linear forwards;}
+@keyframes cfF{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
 </style>
 </head>
 <body>
-
-<h2>Volley Cards</h2>
-<div id="court">
-  <div id="net"></div>
-  <div id="ball"></div>
+ 
+<!-- LOBBY -->
+<div class="screen active" id="s-lobby">
+  <div class="lobby-logo">
+    <div class="lobby-badge">🏐 Multiplayer</div>
+    <h1>VOLLEY<em>CARDS</em></h1>
+    <p>2-Player · Online</p>
+  </div>
+  <div class="lobby-card">
+    <div id="step-connect">
+      <button class="lbtn lbtn-primary" onclick="createRoom()">Create New Game</button>
+      <p style="font-size:0.73rem;color:var(--muted);text-align:center;margin-top:8px;line-height:1.5;">You'll get a code to share with your opponent.</p>
+      <div class="lobby-divider"><span>or join</span></div>
+      <input class="linput" id="code-input" maxlength="4" placeholder="Enter Code" oninput="this.value=this.value.toUpperCase()">
+      <button class="lbtn lbtn-sec" onclick="joinRoom()">Join Game</button>
+      <div class="lobby-error" id="lobby-error"></div>
+    </div>
+    <div id="step-waiting" style="display:none;">
+      <p class="section-label">Share this code with your opponent</p>
+      <div class="wcode" id="room-code-display">----</div>
+      <p class="wmsg pulse">Waiting for opponent to join...</p>
+    </div>
+    <div id="step-name" style="display:none;">
+      <p class="section-label">Opponent connected! Enter your name to start</p>
+      <input class="linput nameinput" id="name-input" maxlength="16" placeholder="Your name">
+      <button class="lbtn lbtn-green" id="ready-btn" onclick="sendReady()">Ready ✓</button>
+      <div class="ready-status" id="ready-status">
+        <div class="ready-pip wait" id="pip-me">You: waiting...</div>
+        <div class="ready-pip wait" id="pip-opp">Opponent: waiting...</div>
+      </div>
+    </div>
+  </div>
 </div>
-
+ 
+<!-- GAME -->
+<div class="screen" id="s-game">
+  <div id="topbar">
+    <div id="topbar-title">VOLLEY<em>CARDS</em></div>
+    <div id="role-badge" class="p1">You</div>
+  </div>
+  <div id="scoreboard">
+    <div class="sb-box">
+      <div class="sb-name c1" id="sb-p1name">Player 1</div>
+      <div class="sb-pts" id="p1pts">0</div>
+      <div class="sb-sets">Sets: <span id="p1sets">0</span></div>
+      <div class="sb-dots"><div class="sdot" id="p1d0"></div><div class="sdot" id="p1d1"></div></div>
+    </div>
+    <div class="sb-mid"><span>vs</span></div>
+    <div class="sb-box right">
+      <div class="sb-name c2" id="sb-p2name">Player 2</div>
+      <div class="sb-pts" id="p2pts">0</div>
+      <div class="sb-sets">Sets: <span id="p2sets">0</span></div>
+      <div class="sb-dots"><div class="sdot" id="p2d0"></div><div class="sdot" id="p2d1"></div></div>
+    </div>
+  </div>
+  <div id="turn-indicator">
+    <div class="ti-bar"><div class="ti-fill inactive" id="ti-fill" style="width:0%"></div></div>
+    <div class="ti-label" id="ti-label">Waiting...</div>
+  </div>
+  <div id="timer-wrap">
+    <div id="timer-ring">
+      <svg width="36" height="36" viewBox="0 0 36 36">
+        <circle class="bg" cx="18" cy="18" r="14"/>
+        <circle class="fg" id="timer-arc" cx="18" cy="18" r="14" stroke-dasharray="87.96" stroke-dashoffset="0" stroke="#00c4b4"/>
+      </svg>
+      <div id="timer-num">12</div>
+    </div>
+    <div id="timer-label">Seconds</div>
+  </div>
+  <div id="msgbar">
+    <div id="msg-action" style="font-size:0.75rem;color:var(--muted);min-height:18px;margin-bottom:2px;transition:opacity 0.3s;"></div>
+    <div id="msg-prompt" style="font-weight:700;font-size:0.88rem;min-height:20px;transition:opacity 0.3s;"></div>
+  </div>
+  <div id="opp-area">
+    <div class="opp-label" id="opp-label">Opponent</div>
+    <div class="opp-cards" id="opp-cards"></div>
+  </div>
+  <div id="court-wrap">
+    <div id="court">
+      <div class="cl cl-top"></div><div class="cl cl-bot"></div>
+      <div class="cl cl-left"></div><div class="cl cl-right"></div>
+      <div class="zgrid zl" id="zgl"></div>
+      <div id="net"></div>
+      <div class="zgrid zr" id="zgr"></div>
+      <div id="ball">🏐</div>
+      <div id="serve-flag"><div class="sfb">🏐</div><div class="sfl" id="sf-label">Serve</div></div>
+    </div>
+  </div>
+  <div id="my-area">
+    <div class="my-label">Your Hand</div>
+    <div class="cards-row" id="my-hand"></div>
+  </div>
+  <div id="playbtn-wrap"><button id="playbtn" disabled>Play Card</button></div>
+  <div id="log-wrap">
+    <div id="log-title">Play Log</div>
+    <div id="log-list"></div>
+  </div>
+  <div id="legend">
+    <div class="leg"><div class="ldot" style="background:#00c4b4"></div>Zone</div>
+    <div class="leg"><div class="ldot" style="background:#e8453c"></div>Spike</div>
+    <div class="leg"><div class="ldot" style="background:#8b5cf6"></div>Tip</div>
+    <div class="leg"><div class="ldot" style="background:#f0b429"></div>Block</div>
+    <div class="leg"><div class="ldot" style="background:#22c55e"></div>Libero</div>
+    <div class="leg"><div class="ldot" style="background:#3b82f6"></div>Ace</div>
+  </div>
+</div>
+ 
+<!-- MATCH OVER -->
+<div id="match-overlay">
+  <div class="obox">
+    <div class="ow">🏆</div>
+    <h2 id="ov-title">You Win!</h2>
+    <p id="ov-msg">Well played, both of you.</p>
+    <div class="obox-btns">
+      <button class="btn-rematch" onclick="sendRematch()">Rematch</button>
+      <button class="btn-lobby" onclick="goLobby()">Back to Lobby</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- OPPONENT LEFT -->
+<div id="opp-left">
+  <div class="opp-left-box">
+    <div style="font-size:2rem;">😢</div>
+    <h2>Opponent Left</h2>
+    <p>Your opponent disconnected. The game has ended.</p>
+    <button class="lbtn lbtn-primary" onclick="goLobby()">Back to Lobby</button>
+  </div>
+</div>
+ 
 <script>
-const ws = new WebSocket(location.origin.replace('http','ws'));
-
-let myPlayer = null;
-let state = null;
-
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if(msg.type==='STATE'){
-    state = msg;
-    myPlayer = msg.myPlayerNum || 1;
-    updateBall();
-  }
+var ws=null, myPlayerNum=null, myName='', lastState=null;
+var selectedCardIds=[], timerInterval=null, timerSecs=12;
+var myReady=false, oppReady=false;
+var prevPointScorer=null;
+ 
+// Message system — two line display, no queue needed
+var msgFadeTimer=null;
+ 
+var CORR=[[1,7,2],[6,8,3],[5,9,4]];
+var CORR_SETS=CORR.map(function(r){return new Set(r);});
+var LEFT_GRID=[[5,9,4],[6,8,3],[1,7,2]];
+var RIGHT_GRID=[[2,7,1],[3,8,6],[4,9,5]];
+var CIRC=2*Math.PI*14;
+var ICONS={PowerSpike:'💥',Tip:'🤫',Block:'🛡️',Libero:'🟢',Ace:'🚀'};
+var TIPS={
+  Zone:{title:'Zone',desc:'Attack or receive to a numbered zone. Defender must use the same corridor.'},
+  PowerSpike:{title:'Power Spike',desc:'Strong attack. Stop with Block+Zone, 2+ Blocks, or Libero.'},
+  Tip:{title:'Tip',desc:'Combo with a Zone card. Defender can only use adjacent zones. No blocks allowed.'},
+  Block:{title:'Block',desc:'1 = ball returns · 2 = cover needed · 3 = direct point for you'},
+  Libero:{title:'Libero',desc:'Defensive specialist. Can receive any type of attack.'},
+  Ace:{title:'Ace',desc:'Serve only. Can only be received by a Libero.'},
 };
-
-// ── ZONE POSITIONS (FIXED GRID) ──
-function getZonePosition(zone, side){
-  if(zone===0){
-    return side===1
-      ? {x:200, y:450}
-      : {x:200, y:150};
+ 
+// WebSocket
+function connect(){
+  if(ws&&(ws.readyState===0||ws.readyState===1))return;
+  var proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(proto+'://'+location.host);
+  ws.onopen=function(){document.getElementById('lobby-error').textContent='';};
+  ws.onmessage=function(e){try{handleMsg(JSON.parse(e.data));}catch(err){console.error(err);}};
+  ws.onclose=function(){setTimeout(connect,2000);};
+  ws.onerror=function(){document.getElementById('lobby-error').textContent='Connection error. Retrying...';};
+}
+function sendWS(d){if(ws&&ws.readyState===1)ws.send(JSON.stringify(d));}
+ 
+function handleMsg(m){
+  if(m.type==='CREATED'){myPlayerNum=1;showStep('waiting');document.getElementById('room-code-display').textContent=m.code;}
+  else if(m.type==='JOINED'){myPlayerNum=2;showStep('name');}
+  else if(m.type==='OPPONENT_JOINED'){showStep('name');}
+  else if(m.type==='OPP_READY'){oppReady=true;updatePips();}
+  else if(m.type==='STATE'){lastState=m;myPlayerNum=m.myPlayerNum;renderState(m);startClientTimer(12);}
+  else if(m.type==='OPPONENT_LEFT'){
+    clearInterval(timerInterval);clearTimeout(msgTimer);msgQueue=[];
+    document.getElementById('opp-left').classList.add('show');
   }
-
-  const col = (zone-1)%3;
-  const row = Math.floor((zone-1)/3);
-
-  const x = col * 133 + 66;
-  const yBase = row * 100 + 50;
-
-  if(side===1){
-    return { x, y: 300 + yBase };
+  else if(m.type==='ERROR'){document.getElementById('lobby-error').textContent=m.msg||'Error';}
+}
+ 
+// Lobby steps
+function showStep(s){
+  document.getElementById('step-connect').style.display=s==='connect'?'block':'none';
+  document.getElementById('step-waiting').style.display=s==='waiting'?'block':'none';
+  document.getElementById('step-name').style.display=s==='name'?'block':'none';
+}
+ 
+function createRoom(){
+  document.getElementById('lobby-error').textContent='';
+  if(ws&&ws.readyState===1){sendWS({type:'CREATE'});return;}
+  document.getElementById('lobby-error').textContent='Connecting...';
+  connect();
+  var t=setInterval(function(){if(ws&&ws.readyState===1){clearInterval(t);document.getElementById('lobby-error').textContent='';sendWS({type:'CREATE'});}},200);
+  setTimeout(function(){clearInterval(t);},5000);
+}
+ 
+function joinRoom(){
+  var code=document.getElementById('code-input').value.trim().toUpperCase();
+  if(code.length!==4){document.getElementById('lobby-error').textContent='Enter a 4-letter code.';return;}
+  document.getElementById('lobby-error').textContent='';
+  if(ws&&ws.readyState===1){sendWS({type:'JOIN',code:code});return;}
+  document.getElementById('lobby-error').textContent='Connecting...';
+  connect();
+  var t=setInterval(function(){if(ws&&ws.readyState===1){clearInterval(t);document.getElementById('lobby-error').textContent='';sendWS({type:'JOIN',code:code});}},200);
+  setTimeout(function(){clearInterval(t);},5000);
+}
+ 
+function sendReady(){
+  var name=document.getElementById('name-input').value.trim();
+  if(!name){document.getElementById('name-input').style.borderColor='var(--p1)';return;}
+  myName=name;myReady=true;
+  var btn=document.getElementById('ready-btn');
+  btn.disabled=true;btn.textContent='Waiting for opponent...';
+  updatePips();
+  sendWS({type:'READY',name:name});
+}
+ 
+function updatePips(){
+  var pm=document.getElementById('pip-me'),po=document.getElementById('pip-opp');
+  pm.textContent='You: '+(myReady?'Ready ✓':'waiting...');
+  pm.className='ready-pip '+(myReady?'rdy':'wait');
+  po.textContent='Opponent: '+(oppReady?'Ready ✓':'waiting...');
+  po.className='ready-pip '+(oppReady?'rdy':'wait');
+}
+ 
+// Set two-line message: action = what just happened, prompt = what to do / who to wait for
+function setMsg(action, prompt, promptStyle){
+  var ea=document.getElementById('msg-action');
+  var ep=document.getElementById('msg-prompt');
+  var mb=document.getElementById('msgbar');
+  mb.className='';mb.id='msgbar';
+  if(action){ea.textContent=action;ea.style.display='block';}
+  else{ea.textContent='';ea.style.display='none';}
+  ep.textContent=prompt||'';
+  if(promptStyle==='hl'){mb.classList.add('hl');ep.style.color='';}
+  else if(promptStyle==='pt'){mb.classList.add('pt');ep.style.color='';}
+  else{ep.style.color='';}
+}
+ 
+// Render
+var prevLastAction=null;
+ 
+function renderState(s){
+  document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('s-game').classList.add('active');
+ 
+  // Role badge
+  var rb=document.getElementById('role-badge');
+  rb.textContent=s.myName;rb.id='role-badge';
+  rb.className=myPlayerNum===1?'p1':'p2';
+ 
+  // Names in scoreboard
+  document.getElementById('sb-p1name').textContent=s.p1name;
+  document.getElementById('sb-p2name').textContent=s.p2name;
+ 
+  // Scores
+  document.getElementById('p1pts').textContent=s.p1Score;
+  document.getElementById('p2pts').textContent=s.p2Score;
+  document.getElementById('p1sets').textContent=s.p1Sets;
+  document.getElementById('p2sets').textContent=s.p2Sets;
+  for(var i=0;i<2;i++){
+    document.getElementById('p1d'+i).className='sdot'+(i<s.p1Sets?' w1':'');
+    document.getElementById('p2d'+i).className='sdot'+(i<s.p2Sets?' w2':'');
+  }
+ 
+  // Opp hand
+  document.getElementById('opp-label').textContent=s.oppName;
+  var oc=document.getElementById('opp-cards');oc.innerHTML='';
+  for(var j=0;j<(s.oppHandCount||0);j++){var d=document.createElement('div');d.className='opp-card';oc.appendChild(d);}
+ 
+  // Messages
+  var isNewPoint=s.pointScorer&&s.pointScorer!==prevPointScorer;
+  if(isNewPoint) prevPointScorer=s.pointScorer;
+  // Reset on new rally (lastAction goes back to idle)
+  if(s.lastAction==='idle') prevPointScorer=null;
+  prevLastAction=s.lastAction;
+ 
+  var actionText='', promptText='', promptStyle='normal';
+ 
+  if(s.matchOver){
+    var isMe2=s.winner===myPlayerNum;
+    actionText=s.pointHow||'';
+    promptText=(isMe2?'You win':s.winnerName+' wins')+' the match! 🏆';
+    promptStyle='pt';
+  } else if(s.paused&&s.pointScorer){
+    // Point just scored — show HOW it happened, keep cards visible
+    var scorerMe=s.pointScorer===myPlayerNum;
+    actionText=s.pointHow||'';
+    promptText=(scorerMe?'You win the point! 🎉':s.pointScorerName+' wins the point!');
+    promptStyle='pt';
+  } else if(s.isMyTurn){
+    // New turn — always clean, no previous action text
+    actionText='';
+    var prompts={
+      Serve:'Select a serve card',
+      Attack:'Select an attack card',
+      Defense:'Select a defense card',
+      Cover:'Select a cover card'
+    };
+    promptText=prompts[s.turnState]||'Your turn';
+    promptStyle='hl';
   } else {
-    return { x, y: 300 - yBase };
+    // Opponent's turn — show what they just did only if it happened this rally
+    // If lastAction is idle, it's a fresh rally — show nothing
+    if(s.lastAction && s.lastAction!=='idle' && s.lastAction!=='point' && s.log&&s.log.length){
+      for(var li=s.log.length-1;li>=0;li--){
+        if(s.log[li].player!=='point'){actionText=s.log[li].text;break;}
+      }
+    } else {
+      actionText='';
+    }
+    var waitingFor={
+      Serve:s.attName+' is selecting a serve...',
+      Attack:s.attName+' is selecting an attack...',
+      Defense:s.defName+' is defending...',
+      Cover:s.attName+' is selecting a cover card...'
+    };
+    promptText=waitingFor[s.turnState]||'Waiting for '+s.oppName+'...';
+    promptStyle='normal';
+  }
+ 
+  setMsg(actionText, promptText, promptStyle);
+ 
+  // Hand
+  renderHand(s.myHand||[],s);
+  document.getElementById('playbtn').disabled=!s.isMyTurn||selectedCardIds.length===0||s.matchOver||s.paused;
+ 
+  // Turn indicator
+  var tiL=document.getElementById('ti-label'),tiF=document.getElementById('ti-fill');
+  if(s.isMyTurn&&!s.matchOver&&!s.paused){
+    tiL.textContent='Your Turn';tiL.className='ti-label my-turn';
+    tiF.className='ti-fill active';
+    setTimeout(function(){tiF.style.width='0%';},50);
+  } else {
+    tiL.textContent=s.matchOver||s.paused?'':'Opponent\'s Turn';
+    tiL.className='ti-label';
+    tiF.className='ti-fill inactive';
+  }
+ 
+  // Ball
+  updateBall(s);
+ 
+  // Serve flag
+  var flag=document.getElementById('serve-flag'),ct=document.getElementById('court');
+  if(s.turnState==='Serve'&&!s.paused){
+    flag.style.display='flex';
+    var p1a=s.attPlayer===1;
+    flag.style.left=(p1a?8:ct.clientWidth-40)+'px';
+    flag.style.top=(ct.clientHeight/2-20)+'px';
+    document.getElementById('sf-label').textContent=s.attName+' Serves';
+  } else {flag.style.display='none';}
+ 
+  // Zones — only highlight target zone during Defense
+  clearZones();
+  if(s.atkZone&&s.atkZone>0&&s.turnState==='Defense'){highlightZone(s.atkZone,s.defPlayer);}
+ 
+  // Log
+  if(s.log){
+    var list=document.getElementById('log-list');list.innerHTML='';
+    s.log.forEach(function(e){addLogEntry(e.icon,e.player,e.text);});
+  }
+ 
+  // Match overlay
+  if(s.matchOver){
+    var me2=s.winner===myPlayerNum;
+    document.getElementById('ov-title').textContent=me2?'You Win!':s.winnerName+' Wins!';
+    document.getElementById('ov-msg').textContent='Well played, both of you.';
+    document.getElementById('match-overlay').classList.add('show');
+    spawnConfetti();
+  } else if(isNewPoint){
+    spawnConfetti();
   }
 }
-
-// ── MAIN BALL SYSTEM ──
-function updateBall(){
-  if(!state) return;
-
-  const ball = document.getElementById('ball');
-
-  const side = state.ballSide;
-  const zone = state.ballZone;
-
-  const pos = getZonePosition(zone, side);
-
-  ball.style.left = (pos.x - 10) + 'px';
-  ball.style.top  = (pos.y - 10) + 'px';
+ 
+// ── BALL MOVEMENT ──────────────────────────────────────
+// Court layout: P1 always on LEFT half (x: 0..0.5), P2 always on RIGHT half (x: 0.5..1)
+// Zone grid LEFT (P1 side):  row-top=[5,9,4] row-mid=[6,8,3] row-bot=[1,7,2]
+// Zone grid RIGHT (P2 side): row-top=[2,7,1] row-mid=[3,8,6] row-bot=[4,9,5]
+// Each half is divided into 3 columns and 3 rows.
+ 
+var BALL_ZONE_POS = (function(){
+  // For each zone, compute its center x,y on the correct half
+  // x: column position within the half (cols: left=1/6, mid=3/6, right=5/6 of the half width)
+  // y: row position (rows top=0.17, mid=0.5, bot=0.83)
+  var left  = [[5,9,4],[6,8,3],[1,7,2]]; // top to bottom on P1 (left) side
+  var right = [[2,7,1],[3,8,6],[4,9,5]]; // top to bottom on P2 (right) side
+  var pos = {};
+  var ys = [0.17, 0.5, 0.83];
+  var xCols = [1/6, 3/6, 5/6]; // fractional position within the half
+  left.forEach(function(row, r){
+    row.forEach(function(zone, c){
+      pos['L'+zone] = { x: xCols[c] * 0.47,        y: ys[r] }; // left half: x 0..0.47
+    });
+  });
+  right.forEach(function(row, r){
+    row.forEach(function(zone, c){
+      pos['R'+zone] = { x: 0.53 + xCols[c] * 0.47, y: ys[r] }; // right half: x 0.53..1
+    });
+  });
+  return pos;
+}());
+ 
+function zonePos(zone, playerSide) {
+  // playerSide: 1 = P1 (left), 2 = P2 (right)
+  if (!zone || zone === 0) return null;
+  var key = (playerSide === 1 ? 'L' : 'R') + zone;
+  return BALL_ZONE_POS[key] || null;
 }
-
-// ── OPTIONAL: CLICK TO TEST PLAY ──
-document.body.addEventListener('click', ()=>{
-  ws.send(JSON.stringify({ type:'PLAY', cardIds:[1] }));
-});
-
+ 
+function updateBall(s) {
+  var x, y;
+  var la = s.lastAction || 'idle';
+  var bz = s.ballZone || 0;         // targeted zone number
+  var bs = s.ballSide || s.attPlayer || 1; // which player's side the ball is on (1=left, 2=right)
+  var pos;
+ 
+  if (la === 'idle' || (la === 'serve' && bz === 0)) {
+    // Rally start — ball on server's back area
+    x = (bs === 1) ? 0.16 : 0.84;
+    y = 0.78;
+ 
+  } else if (la === 'serve') {
+    // After serve — ball near target zone on DEFENDER's side
+    pos = zonePos(bz, bs); // bs is now defPlayer's side after serve
+    if (pos) { x = pos.x; y = pos.y; }
+    else { x = (bs === 1) ? 0.25 : 0.75; y = 0.5; }
+ 
+  } else if (la === 'defend') {
+    // After defend — ball stays on SAME side (defender's side = bs) but moves to center of that half
+    x = (bs === 1) ? 0.24 : 0.76;
+    y = 0.5;
+ 
+  } else if (la === 'block') {
+    // After block — ball pushed back, center of blocking player's side
+    x = (bs === 1) ? 0.24 : 0.76;
+    y = 0.45;
+ 
+  } else if (la === 'attack') {
+    // After attack — ball on DEFENDER's side near attacked zone
+    pos = zonePos(bz, bs); // bs is defPlayer's side
+    if (pos) { x = pos.x; y = pos.y; }
+    else { x = (bs === 1) ? 0.25 : 0.75; y = 0.5; }
+ 
+  } else if (la === 'point') {
+    // Point — ball stays where it landed
+    pos = zonePos(bz, bs);
+    if (pos) { x = pos.x; y = pos.y; }
+    else { x = (bs === 1) ? 0.25 : 0.75; y = 0.5; }
+ 
+  } else {
+    // Fallback — server's back area
+    x = (bs === 1) ? 0.16 : 0.84;
+    y = 0.78;
+  }
+ 
+  placeBall(x, y);
+}
+ 
+function renderHand(hand,s){
+  var con=document.getElementById('my-hand');con.innerHTML='';
+  hand.forEach(function(card){
+    var div=document.createElement('div');div.className='card c'+card.type;
+    var isSel=selectedCardIds.indexOf(card.id)!==-1;
+    var canPlay=s.isMyTurn&&!s.paused&&isPlayable(card,s);
+    if(isSel)div.classList.add('selected');
+    else if(!canPlay)div.classList.add('locked');
+    var tt=TIPS[card.type]||{title:card.type,desc:''};
+    div.innerHTML=(card.type==='Zone'?'<div class="card-num">'+card.zone+'</div><div class="card-lbl">Zone</div>':'<div class="card-icon">'+ICONS[card.type]+'</div><div class="card-lbl">'+card.type+'</div>')+'<div class="tooltip"><strong>'+tt.title+'</strong>'+tt.desc+'</div>';
+    if(canPlay||isSel)div.addEventListener('click',(function(c){return function(){onCardClick(c,s);};})(card));
+    con.appendChild(div);
+  });
+}
+ 
+function onCardClick(card,s){
+  if(!s.isMyTurn||s.paused)return;
+  var idx=selectedCardIds.indexOf(card.id);
+  if(idx!==-1){if(card.type==='Tip'||card.type==='Block')selectedCardIds=[];else selectedCardIds.splice(idx,1);}
+  else{selectedCardIds.push(card.id);}
+  document.getElementById('playbtn').disabled=selectedCardIds.length===0;
+  clearZones();
+  if(s.atkZone&&s.atkZone>0&&s.turnState==='Defense')highlightZone(s.atkZone,s.defPlayer);
+  var sel=(s.myHand||[]).filter(function(c){return selectedCardIds.indexOf(c.id)!==-1;});
+  var sz=null,st=null;
+  for(var i=0;i<sel.length;i++){if(sel[i].type==='Zone')sz=sel[i];if(sel[i].type==='Tip')st=sel[i];}
+  if(sz&&(s.turnState==='Serve'||s.turnState==='Attack')){if(st)showTipZones(sz.zone,s.defPlayer);else showCorridor(sz.zone,s.defPlayer);}
+  renderHand(s.myHand||[],s);
+}
+ 
+function onPlay(){
+  if(!lastState||!lastState.isMyTurn||lastState.paused||!selectedCardIds.length)return;
+  sendWS({type:'PLAY',cardIds:selectedCardIds});
+  selectedCardIds=[];
+  document.getElementById('playbtn').disabled=true;
+}
+ 
+function sameCorridor(a,b){return CORR_SETS.some(function(s){return s.has(a)&&s.has(b);});}
+function isAdjacent(a,b){for(var i=0;i<CORR.length;i++){var r=CORR[i],ia=r.indexOf(a),ib=r.indexOf(b);if(ia!==-1&&ib!==-1&&Math.abs(ia-ib)===1)return true;}return false;}
+ 
+function isPlayable(card,s){
+  var ts=s.turnState,at=s.atkType,az=s.atkZone,sp=s.isServePhase;
+  var sel=(s.myHand||[]).filter(function(c){return selectedCardIds.indexOf(c.id)!==-1;});
+  if(!sel.length){
+    if(ts==='Serve')return card.type==='Zone'||card.type==='Ace';
+    if(ts==='Attack'){if(card.type==='PowerSpike'||card.type==='Zone')return true;if(card.type==='Tip')return(s.myHand||[]).some(function(c){return c.type==='Zone';});return false;}
+    if(ts==='Defense'){
+      if(['Ace','PowerSpike','Tip'].indexOf(card.type)!==-1)return false;
+      if(sp){if(at==='Zone')return(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';if(at==='Ace')return card.type==='Libero';return false;}
+      if(at==='Tip'){if(card.type==='Block')return false;if(card.type==='Zone'&&(card.zone===az||isAdjacent(card.zone,az)))return true;return card.type==='Libero';}
+      if(at==='Zone')return card.type==='Block'||(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';
+      if(at==='PowerSpike')return card.type==='Block'||card.type==='Libero';
+    }
+    if(ts==='Cover'){if(at==='PowerSpike')return card.type==='Zone'||card.type==='Libero';if(at==='Zone')return(card.type==='Zone'&&sameCorridor(card.zone,az))||card.type==='Libero';return false;}
+    return false;
+  }
+  if(selectedCardIds.indexOf(card.id)!==-1)return true;
+  var first=sel[0];if(!first)return false;
+  if(first.type==='Tip')return sel.length===1&&card.type==='Zone';
+  if(first.type==='Block'){
+    var bc=sel.filter(function(c){return c.type==='Block';}).length;
+    var zc=sel.filter(function(c){return c.type==='Zone';}).length;
+    if(at==='PowerSpike'){if(bc===1&&zc===0)return card.type==='Block'||card.type==='Zone';if(bc===1&&zc===1)return false;if(bc>=2)return card.type==='Block';}
+    else return card.type==='Block';
+  }
+  return false;
+}
+ 
+function startClientTimer(secs){
+  clearInterval(timerInterval);timerSecs=secs;updateTimerUI();
+  timerInterval=setInterval(function(){
+    timerSecs=Math.max(0,timerSecs-1);updateTimerUI();
+    if(timerSecs<=0){clearInterval(timerInterval);if(lastState&&lastState.isMyTurn&&!lastState.paused)sendWS({type:'TIMEOUT'});}
+  },1000);
+}
+function updateTimerUI(){
+  var t=timerSecs;
+  document.getElementById('timer-num').textContent=t;
+  var arc=document.getElementById('timer-arc');
+  arc.style.strokeDashoffset=CIRC*(1-t/12);
+  arc.style.stroke=t>8?'#00c4b4':t>4?'#f0b429':'#e8453c';
+  document.getElementById('timer-num').style.color=t>8?'#e8edf2':t>4?'#f0b429':'#e8453c';
+}
+ 
+function showCorridor(zone,defPlayer){
+  clearZones();
+  var dP=defPlayer===1,layout=dP?LEFT_GRID:RIGHT_GRID;
+  var grid=document.getElementById(dP?'zgl':'zgr'),cells=grid.querySelectorAll('.zcell'),ct=document.getElementById('court');
+  var cr=-1;layout.forEach(function(row,r){if(row.indexOf(zone)!==-1)cr=r;});if(cr===-1)return;
+  layout[cr].forEach(function(_,c){var cell=cells[cr*3+c];if(cell)cell.classList.add('blue');});
+  var rowH=grid.clientHeight/3,rowTop=cr*rowH,gl=dP?0:(ct.clientWidth/2)+3,gw=(ct.clientWidth/2)-3;
+  var layer=document.createElement('div');layer.className='arr-layer';layer.id='arr-layer';
+  layer.style.cssText='left:'+gl+'px;top:'+rowTop+'px;width:'+gw+'px;height:'+rowH+'px;';
+  var dir=dP?'al':'ar';
+  for(var i=0;i<3;i++){var a=document.createElement('div');a.className='arr-ch '+dir;layer.appendChild(a);}
+  ct.appendChild(layer);
+}
+function showTipZones(zone,defPlayer){
+  clearZones();
+  var dP=defPlayer===1,layout=dP?LEFT_GRID:RIGHT_GRID;
+  var grid=document.getElementById(dP?'zgl':'zgr'),cells=grid.querySelectorAll('.zcell'),ct=document.getElementById('court');
+  var zCorr=null,zIdx=-1;
+  for(var i=0;i<CORR.length;i++){var idx=CORR[i].indexOf(zone);if(idx!==-1){zCorr=CORR[i];zIdx=idx;break;}}
+  var def=new Set([zone]);
+  if(zIdx>0)def.add(zCorr[zIdx-1]);if(zIdx<2)def.add(zCorr[zIdx+1]);
+  var cr=-1;layout.forEach(function(row,r){if(row.some(function(z){return def.has(z);}))cr=r;});if(cr===-1)return;
+  var defCols=[];layout[cr].forEach(function(z,c){if(def.has(z))defCols.push(c);});
+  defCols.forEach(function(c){var cell=cells[cr*3+c];if(cell)cell.classList.add('blue');});
+  var cW=grid.clientWidth/3,rowH=grid.clientHeight/3,rowTop=cr*rowH,gl=dP?0:(ct.clientWidth/2)+3;
+  var minC=Math.min.apply(null,defCols),maxC=Math.max.apply(null,defCols);
+  var layer=document.createElement('div');layer.className='arr-layer';layer.id='arr-layer';
+  layer.style.cssText='left:'+(gl+minC*cW)+'px;top:'+rowTop+'px;width:'+((maxC-minC+1)*cW)+'px;height:'+rowH+'px;';
+  var dir=dP?'al':'ar',n=defCols.length>=3?3:2;
+  for(var j=0;j<n;j++){var a=document.createElement('div');a.className='arr-ch '+dir;layer.appendChild(a);}
+  ct.appendChild(layer);
+}
+function highlightZone(zone,defPlayer){
+  var dP=defPlayer===1,layout=dP?LEFT_GRID:RIGHT_GRID;
+  var cells=document.getElementById(dP?'zgl':'zgr').querySelectorAll('.zcell');
+  layout.forEach(function(row,r){row.forEach(function(z,c){if(z===zone){var cell=cells[r*3+c];if(cell)cell.classList.add('gold');}});});
+}
+function clearZones(){
+  document.querySelectorAll('.zcell').forEach(function(c){c.classList.remove('gold');c.classList.remove('blue');});
+  var old=document.getElementById('arr-layer');if(old)old.remove();
+}
+function placeBall(xp,yp){
+  var b=document.getElementById('ball'),ct=document.getElementById('court');
+  b.style.left=(ct.clientWidth*xp-11)+'px';b.style.top=(ct.clientHeight*yp-11)+'px';
+}
+function buildGrids(){buildGrid('zgl',LEFT_GRID);buildGrid('zgr',RIGHT_GRID);}
+function buildGrid(id,layout){
+  var g=document.getElementById(id);g.innerHTML='';
+  layout.forEach(function(row){row.forEach(function(zone){var c=document.createElement('div');c.className='zcell';c.textContent=zone;g.appendChild(c);});});
+}
+function addLogEntry(icon,player,text){
+  var list=document.getElementById('log-list'),entry=document.createElement('div');
+  entry.className='log-entry '+(player||'');
+  entry.innerHTML='<span style="flex-shrink:0">'+icon+'</span><span>'+text+'</span>';
+  list.appendChild(entry);
+  while(list.children.length>20)list.removeChild(list.firstChild);
+  list.scrollTop=list.scrollHeight;
+}
+ 
+var CC=['#f0b429','#e8453c','#00c4b4','#8b5cf6','#22c55e','#3b82f6','#ff7a00','#fff'];
+function spawnConfetti(){
+  for(var i=0;i<50;i++){
+    (function(){setTimeout(function(){
+      var el=document.createElement('div');el.className='cfeti';
+      el.style.left=Math.random()*100+'vw';
+      el.style.background=CC[Math.floor(Math.random()*CC.length)];
+      el.style.width=(5+Math.random()*7)+'px';el.style.height=(5+Math.random()*7)+'px';
+      el.style.borderRadius=Math.random()>0.5?'50%':'2px';
+      el.style.animationDuration=(1.2+Math.random()*1.4)+'s';
+      document.body.appendChild(el);setTimeout(function(){el.remove();},3000);
+    },Math.random()*600);}());
+  }
+}
+ 
+function sendRematch(){
+  document.getElementById('match-overlay').classList.remove('show');
+  prevLastAction=null;prevPointScorer=null;
+  sendWS({type:'REMATCH'});
+}
+ 
+function goLobby(){
+  document.getElementById('match-overlay').classList.remove('show');
+  document.getElementById('opp-left').classList.remove('show');
+  clearInterval(timerInterval);clearTimeout(msgTimer);
+  selectedCardIds=[];
+  lastState=null;prevLastAction=null;prevPointScorer=null;
+  myReady=false;oppReady=false;
+  // Close WebSocket — server will delete the room on disconnect
+  if(ws){ ws.onclose=null; ws.close(); ws=null; }
+  document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('s-lobby').classList.add('active');
+  showStep('connect');
+  document.getElementById('code-input').value='';
+  document.getElementById('name-input').value='';
+  document.getElementById('name-input').style.borderColor='';
+  document.getElementById('lobby-error').textContent='';
+  var btn=document.getElementById('ready-btn');btn.disabled=false;btn.textContent='Ready ✓';
+  updatePips();
+  // Reconnect fresh after small delay
+  setTimeout(connect, 300);
+}
+ 
+document.getElementById('playbtn').addEventListener('click',onPlay);
+document.getElementById('name-input').addEventListener('keydown',function(e){if(e.key==='Enter')sendReady();});
+buildGrids();
+showStep('connect');
+connect();
 </script>
-
 </body>
 </html>
