@@ -278,7 +278,7 @@ function processPlay(room, playerNum, cardIds) {
     }
     state.turnState=TS.Defense; state.isServePhase=true;
     state.lastAction='serve';
-    state.ballSide=state.defPlayer;
+    state.ballSide = state.defPlayer;  // ball is now on defender's side
     state.ballZone = (state.atkType===AT.Ace) ? 0 : state.atkZone;
     broadcast(room,state); checkNoPlayable(room); return;
   }
@@ -324,7 +324,7 @@ function processPlay(room, playerNum, cardIds) {
       if(bc>=2&&zc===0){
         removeCards(defHand,cids);
         if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum,'Triple Block by '+me); return; }
-        addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; broadcast(room,state); checkNoPlayable(room); return;
+        addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; state.ballSide=state.defPlayer; state.ballZone=0; broadcast(room,state); checkNoPlayable(room); return;
       }
       return;
     }
@@ -334,8 +334,8 @@ function processPlay(room, playerNum, cardIds) {
       if(bc>=1&&zc===0){
         removeCards(defHand,cids);
         if(bc>=3){ addLog(state,'🏆','p'+playerNum,me+' triple blocked!'); awardPoint(room,playerNum,'Triple Block by '+me); return; }
-        if(bc===2){ addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; broadcast(room,state); checkNoPlayable(room); return; }
-        addLog(state,'🛡️','p'+playerNum,me+' single blocked — ball returns'); state.turnState=TS.Attack; state.lastAction='defend'; state.ballSide=state.attPlayer; state.atkZone=0; broadcast(room,state); checkNoPlayable(room); return;
+        if(bc===2){ addLog(state,'🛡️','p'+playerNum,me+' double blocked — cover needed!'); state.turnState=TS.Cover; state.lastAction='block'; state.ballSide=state.defPlayer; state.ballZone=0; broadcast(room,state); checkNoPlayable(room); return; }
+        addLog(state,'🛡️','p'+playerNum,me+' single blocked — ball returns'); state.turnState=TS.Attack; state.lastAction='defend'; state.ballSide=state.defPlayer; state.ballZone=0; state.atkZone=0; broadcast(room,state); checkNoPlayable(room); return;
       }
       return;
     }
