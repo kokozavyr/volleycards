@@ -2,24 +2,24 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
- 
+
 const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
- 
+
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
- 
+
 const rooms = {};
- 
+
 function makeCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return rooms[code] ? makeCode() : code;
 }
- 
+
 // ── DECK ────────────────────────────────────────────────
 const CT = { Zone:'Zone', PowerSpike:'PowerSpike', Tip:'Tip', Block:'Block', Libero:'Libero', Ace:'Ace' };
 let _uid = 0;
@@ -38,23 +38,27 @@ function shuffle(a) {
   for (let i=a.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
   return a;
 }
- 
+
 // ── GAME CONSTANTS ──────────────────────────────────────
 const AT = { Zone:'Zone', PowerSpike:'PowerSpike', Tip:'Tip', Ace:'Ace' };
 const TS = { Serve:'Serve', Attack:'Attack', Defense:'Defense', Cover:'Cover' };
 const CORR = [[1,7,2],[6,8,3],[5,9,4]];
 const CORR_SETS = CORR.map(r => new Set(r));
 const POINTS_WIN=2, MAX_PTS=25, SETS_WIN=2;
- 
+
+// Default player colors, used only if a client somehow reaches game start without picking one.
+const DEFAULT_P1_COLOR = '#e8453c';
+const DEFAULT_P2_COLOR = '#00c4b4';
+
 function sameCorridor(a,b){ return CORR_SETS.some(s=>s.has(a)&&s.has(b)); }
 function isAdjacent(a,b){
   for(const r of CORR){const ia=r.indexOf(a),ib=r.indexOf(b);if(ia!==-1&&ib!==-1&&Math.abs(ia-ib)===1)return true;}
   return false;
 }
 function winsSet(ps,os){ return ps>=POINTS_WIN&&(ps>=MAX_PTS||ps-os>=2); }
- 
+
 // ── STATE ───────────────────────────────────────────────
-function initGameState(firstP1, p1name, p2name) {
+function initGameState(firstP1, p1name, p2name, p1color, p2color) {
   return {
     p1Score:0, p2Score:0, p1Sets:0, p2Sets:0,
     setNum:1, firstSetP1:firstP1, p1Serving:firstP1,
@@ -63,6 +67,7 @@ function initGameState(firstP1, p1name, p2name) {
     atkType:null, atkZone:0, isServePhase:true,
     attPlayer:firstP1?1:2, defPlayer:firstP1?2:1,
     p1name: p1name||'Player 1', p2name: p2name||'Player 2',
+    p1Color: p1color||DEFAULT_P1_COLOR, p2Color: p2color||DEFAULT_P2_COLOR,
     log:[], matchOver:false, winner:null,
     paused:false, pointScorer:null,
     lastAction:'serve', ballSide:firstP1?1:2,
@@ -70,29 +75,23 @@ function initGameState(firstP1, p1name, p2name) {
     pointHow:'',        // human-readable how point was scored
   };
 }
- 
+
 function dealHands(state) {
   state.p1Hand = makeDeck().slice(0,6);
   state.p2Hand = makeDeck().slice(0,6);
 }
- 
+
 function getHand(state, player) { return player===1 ? state.p1Hand : state.p2Hand; }
 function removeCard(hand, id) { const i=hand.findIndex(c=>c.id===id); if(i!==-1)hand.splice(i,1); }
 function removeCards(hand, ids) { ids.forEach(id=>removeCard(hand,id)); }
- 
+
 function playerName(state, num) { return num===1 ? state.p1name : state.p2name; }
- 
+
 function addLog(state, icon, player, text) {
   state.log.push({icon, player, text});
   if(state.log.length>30) state.log.shift();
 }
- 
-// ── MESSAGE HELPERS (perspective-aware) ─────────────────
-// actorNum = who did the action, viewerNum = who is receiving this payload
-function perspMsg(actorNum, viewerNum, youText, theyText) {
-  return actorNum===viewerNum ? youText : theyText;
-}
- 
+
 // ── PAYLOAD ─────────────────────────────────────────────
 function buildPayload(state, playerNum) {
   const myHand = playerNum===1 ? state.p1Hand : state.p2Hand;
@@ -110,6 +109,7 @@ function buildPayload(state, playerNum) {
     p1Score:state.p1Score, p2Score:state.p2Score,
     p1Sets:state.p1Sets, p2Sets:state.p2Sets,
     p1name:state.p1name, p2name:state.p2name,
+    p1Color:state.p1Color, p2Color:state.p2Color,
     myName, oppName,
     turnState:state.turnState,
     atkType:state.atkType, atkZone:state.atkZone,
@@ -130,13 +130,13 @@ function buildPayload(state, playerNum) {
     pointHow:state.pointHow||'',
   };
 }
- 
+
 function broadcast(room, state) {
   const [p1ws, p2ws] = room.players;
   if(p1ws&&p1ws.readyState===WebSocket.OPEN) p1ws.send(JSON.stringify(buildPayload(state,1)));
   if(p2ws&&p2ws.readyState===WebSocket.OPEN) p2ws.send(JSON.stringify(buildPayload(state,2)));
 }
- 
+
 // ── GAME ACTIONS ────────────────────────────────────────
 function doSwap(state, defHand, cards, playerNum, desc) {
   removeCards(defHand, cards.map(c=>c.id));
@@ -148,7 +148,7 @@ function doSwap(state, defHand, cards, playerNum, desc) {
   state.ballSide = state.attPlayer;
   state.atkZone = 0;
 }
- 
+
 function awardPoint(room, scorerNum, how) {
   const state = room.state;
   Object.values(room.timers).forEach(t=>clearTimeout(t));
@@ -158,7 +158,7 @@ function awardPoint(room, scorerNum, how) {
   state.pointHow = how || '';
   addLog(state,'🎉','point', playerName(state,scorerNum)+' wins the point!'+(how?' ('+how+')':''));
   state.lastAction='point'; state.pointScorer=scorerNum; state.paused=true;
- 
+
   if(winsSet(state.p1Score,state.p2Score)){
     state.p1Sets++;
     addLog(state,'🏆','point', state.p1name+' wins the set!');
@@ -184,7 +184,7 @@ function awardPoint(room, scorerNum, how) {
   broadcast(room,state);
   setTimeout(()=>{ nextRally(room); },3000);
 }
- 
+
 function nextSet(room, p1serves) {
   const s = room.state;
   s.setNum++; s.p1Score=0; s.p2Score=0;
@@ -192,14 +192,14 @@ function nextSet(room, p1serves) {
   dealHands(s); startRally(s); broadcast(room,s);
   scheduleTimeout(room); checkNoPlayable(room);
 }
- 
+
 function nextRally(room) {
   const s = room.state;
   s.paused=false; s.pointScorer=null;
   dealHands(s); startRally(s); broadcast(room,s);
   scheduleTimeout(room); checkNoPlayable(room);
 }
- 
+
 function startRally(state) {
   state.attPlayer = state.p1Serving?1:2;
   state.defPlayer = state.p1Serving?2:1;
@@ -207,7 +207,7 @@ function startRally(state) {
   state.turnState=TS.Serve; state.selected=[];
   state.lastAction='serve'; state.ballSide=state.attPlayer;
 }
- 
+
 function checkNoPlayable(room) {
   const state = room.state;
   if(!state||state.matchOver||state.paused) return;
@@ -233,7 +233,7 @@ function checkNoPlayable(room) {
     awardPoint(room,winner,'No valid cards for '+playerName(state,active));
   }
 }
- 
+
 function handleTimeout(room, playerNum) {
   const state=room.state;
   if(!state||state.matchOver||state.paused) return;
@@ -243,7 +243,7 @@ function handleTimeout(room, playerNum) {
   addLog(state,'⏰','point', playerName(state,playerNum)+' ran out of time');
   awardPoint(room,winner,playerName(state,playerNum)+' ran out of time');
 }
- 
+
 function scheduleTimeout(room) {
   if(!room.state||room.state.matchOver||room.state.paused) return;
   const active=room.state.turnState===TS.Defense?room.state.defPlayer:room.state.attPlayer;
@@ -251,7 +251,7 @@ function scheduleTimeout(room) {
   room.timers={};
   room.timers[active]=setTimeout(()=>handleTimeout(room,active), 13000);
 }
- 
+
 // ── PLAY PROCESSOR ──────────────────────────────────────
 function processPlay(room, playerNum, cardIds) {
   const state=room.state;
@@ -262,9 +262,9 @@ function processPlay(room, playerNum, cardIds) {
   const ts=state.turnState, at=state.atkType;
   if(ts!==TS.Defense&&state.attPlayer!==playerNum) return;
   if(ts===TS.Defense&&state.defPlayer!==playerNum) return;
- 
+
   const me = playerName(state,playerNum);
- 
+
   if(ts===TS.Serve){
     const c=cards[0];
     if(c.type!==CT.Zone&&c.type!==CT.Ace) return;
@@ -282,7 +282,7 @@ function processPlay(room, playerNum, cardIds) {
     state.ballZone = (state.atkType===AT.Ace) ? 0 : state.atkZone;
     broadcast(room,state); checkNoPlayable(room); return;
   }
- 
+
   if(ts===TS.Attack){
     const tip=cards.find(c=>c.type===CT.Tip);
     const zone=cards.find(c=>c.type===CT.Zone);
@@ -310,14 +310,14 @@ function processPlay(room, playerNum, cardIds) {
     }
     return;
   }
- 
+
   if(ts===TS.Defense){
     const defHand=getHand(state,playerNum);
     const bc=cards.filter(c=>c.type===CT.Block).length;
     const zc=cards.filter(c=>c.type===CT.Zone).length;
     const lib=cards.some(c=>c.type===CT.Libero);
     const cids=cards.map(c=>c.id);
- 
+
     if(at===AT.PowerSpike){
       if(lib&&cards.length===1){ doSwap(state,defHand,cards,playerNum,'passed with Libero'); broadcast(room,state); checkNoPlayable(room); return; }
       if(bc===1&&zc===1){ removeCards(defHand,cids); addLog(state,'🛡️','p'+playerNum,me+' blocked and dug — ball returns'); state.turnState=TS.Attack; state.lastAction='defend'; state.ballSide=state.attPlayer; state.atkZone=0; broadcast(room,state); checkNoPlayable(room); return; }
@@ -351,7 +351,7 @@ function processPlay(room, playerNum, cardIds) {
     }
     return;
   }
- 
+
   if(ts===TS.Cover){
     if(cards.length!==1) return;
     const c=cards[0]; let ok=false;
@@ -364,15 +364,15 @@ function processPlay(room, playerNum, cardIds) {
     broadcast(room,state); checkNoPlayable(room); return;
   }
 }
- 
+
 // ── WEBSOCKET HANDLER ────────────────────────────────────
 wss.on('connection', (ws) => {
   ws.isAlive=true;
   ws.on('pong',()=>{ ws.isAlive=true; });
- 
+
   ws.on('message',(raw)=>{
     let msg; try{ msg=JSON.parse(raw); }catch(e){ return; }
- 
+
     // CREATE
     if(msg.type==='CREATE'){
       const code=makeCode();
@@ -381,12 +381,13 @@ wss.on('connection', (ws) => {
         firstP1:Math.random()>0.5,
         ready:[false,false],
         names:['Player 1','Player 2'],
+        colors:[null,null],
       };
       ws.roomCode=code; ws.playerNum=1;
       ws.send(JSON.stringify({type:'CREATED',code}));
       return;
     }
- 
+
     // JOIN
     if(msg.type==='JOIN'){
       const code=(msg.code||'').toUpperCase().trim();
@@ -399,22 +400,44 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({type:'JOINED',code}));
       return;
     }
- 
-    // SET NAME + READY
+
+    // LIVE COLOR PICK (before READY is sent) — lets the opponent see the swatch become taken
+    if(msg.type==='COLOR_PICK'){
+      const room=rooms[ws.roomCode];
+      if(!room||!ws.playerNum) return;
+      const color=(msg.color||'').trim();
+      if(!color) return;
+      const pIdx=ws.playerNum-1;
+      room.colors[pIdx]=color;
+      const other=room.players.find(p=>p&&p!==ws);
+      if(other&&other.readyState===WebSocket.OPEN)
+        other.send(JSON.stringify({type:'OPP_COLOR',color}));
+      return;
+    }
+
+    // SET NAME + COLOR + READY
     if(msg.type==='READY'){
       const room=rooms[ws.roomCode];
-      if(!room) return;
+      if(!room||!ws.playerNum) return;
       const pIdx=ws.playerNum-1;
+      const oIdx=pIdx===0?1:0;
+      const color=(msg.color||'').trim();
+      if(!color){ ws.send(JSON.stringify({type:'ERROR',msg:'Please choose a color first.'})); return; }
+      if(room.colors[oIdx] && room.colors[oIdx]===color){
+        ws.send(JSON.stringify({type:'ERROR',msg:'That color was just taken — pick another.'}));
+        return;
+      }
       const name=(msg.name||'').trim().slice(0,20)||('Player '+ws.playerNum);
       room.names[pIdx]=name;
+      room.colors[pIdx]=color;
       room.ready[pIdx]=true;
       // Tell other player this one is ready
       const other=room.players.find(p=>p&&p!==ws);
       if(other&&other.readyState===WebSocket.OPEN)
-        other.send(JSON.stringify({type:'OPP_READY',name}));
+        other.send(JSON.stringify({type:'OPP_READY',name,color}));
       // Both ready — start game
       if(room.ready[0]&&room.ready[1]){
-        room.state=initGameState(room.firstP1, room.names[0], room.names[1]);
+        room.state=initGameState(room.firstP1, room.names[0], room.names[1], room.colors[0], room.colors[1]);
         dealHands(room.state);
         startRally(room.state);
         broadcast(room,room.state);
@@ -423,7 +446,7 @@ wss.on('connection', (ws) => {
       }
       return;
     }
- 
+
     // PLAY
     if(msg.type==='PLAY'){
       const room=rooms[ws.roomCode];
@@ -433,7 +456,7 @@ wss.on('connection', (ws) => {
       scheduleTimeout(room);
       return;
     }
- 
+
     // TIMEOUT
     if(msg.type==='TIMEOUT'){
       const room=rooms[ws.roomCode];
@@ -441,20 +464,20 @@ wss.on('connection', (ws) => {
       handleTimeout(room,ws.playerNum);
       return;
     }
- 
+
     // REMATCH
     if(msg.type==='REMATCH'){
       const room=rooms[ws.roomCode];
       if(!room) return;
       room.ready=[true,true];
-      room.state=initGameState(Math.random()>0.5, room.names[0], room.names[1]);
+      room.state=initGameState(Math.random()>0.5, room.names[0], room.names[1], room.colors[0], room.colors[1]);
       dealHands(room.state); startRally(room.state);
       broadcast(room,room.state);
       scheduleTimeout(room); checkNoPlayable(room);
       return;
     }
   });
- 
+
   ws.on('close',()=>{
     const room=rooms[ws.roomCode];
     if(!room) return;
@@ -468,7 +491,7 @@ wss.on('connection', (ws) => {
     delete rooms[ws.roomCode];
   });
 });
- 
+
 // Keep connections alive through Railway proxy
 setInterval(()=>{
   wss.clients.forEach(ws=>{
@@ -476,5 +499,5 @@ setInterval(()=>{
     ws.isAlive=false; ws.ping();
   });
 },25000);
- 
+
 server.listen(PORT,()=>console.log('VolleyCards running on port '+PORT));
